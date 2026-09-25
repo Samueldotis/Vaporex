@@ -59,8 +59,6 @@
 
           <section class="stats-row" aria-label="Resumen de clientes">
             <article class="stat-block"><span class="stat-label">Total de clientes</span><strong id="stat-total">0</strong><span class="stat-caption">en tu espacio</span></article>
-            <article class="stat-block"><span class="stat-label">Activos</span><strong id="stat-active">0</strong><span class="stat-caption">relaciones en curso</span></article>
-            <article class="stat-block"><span class="stat-label">Prospectos</span><strong id="stat-prospects">0</strong><span class="stat-caption">oportunidades abiertas</span></article>
             <article class="stat-block stat-highlight"><span class="stat-label">Por atender</span><strong id="stat-due">0</strong><span class="stat-caption">próximos pasos pendientes</span></article>
           </section>
 
@@ -71,14 +69,6 @@
                   <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4" /></svg>
                   <input id="search-input" type="search" placeholder="Buscar por nombre o empresa" autocomplete="off" />
                   <kbd>/</kbd>
-                </label>
-                <label class="filter-select-wrap"><span class="sr-only">Filtrar por estado</span>
-                  <select id="status-filter" aria-label="Filtrar por estado">
-                    <option value="all">Todos los estados</option>
-                    <option value="Activo">Activos</option>
-                    <option value="Prospecto">Prospectos</option>
-                    <option value="Inactivo">Inactivos</option>
-                  </select>
                 </label>
               </div>
               <div class="list-meta"><span id="list-heading">CLIENTES</span><span id="list-result-count">0 resultados</span></div>
@@ -101,7 +91,6 @@
           <label class="field field-full"><span>Dirección</span><input name="company" maxlength="100" placeholder="Número de casa, edificio o empresa" /></label>
           <label class="field"><span>Correo electrónico</span><input name="email" type="email" maxlength="120" placeholder="nombre@gmail.com" /></label>
           <label class="field"><span>Teléfono</span><input name="phone" type="tel" maxlength="40" placeholder="+1 555 123 4567" /></label>
-          <label class="field field-full"><span>Estado</span><select name="status"><option>Activo</option><option>Prospecto</option><option>Inactivo</option></select></label>
         </div>
         <div class="dialog-actions"><button class="button button-quiet" type="button" data-close-dialog>Cancelar</button><button class="button button-primary" type="submit">Guardar cliente</button></div>
       </form>
