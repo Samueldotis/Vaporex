@@ -19,16 +19,6 @@ function makeId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function createExamples() {
-  return [
-    { id: 'c-lucia', name: 'Lucía Fernández', company: 'Estudio Lumbre', email: 'lucia@estudiolumbre.es', phone: '+34 611 284 903', status: 'Activo', createdAt: dateOffset(-42), notes: [{ id: 'n-lucia', text: 'Prefiere recibir propuestas por correo antes de la reunión.', createdAt: dateOffset(-2) }], tasks: [{ id: 't-lucia', title: 'Enviar propuesta de renovación', due: dateOffset(1), done: false }, { id: 't-lucia-2', title: 'Revisar entregables de septiembre', due: dateOffset(-1), done: false }] },
-    { id: 'c-marcos', name: 'Marcos Vidal', company: 'Norte Arquitectura', email: 'marcos@nortearq.es', phone: '+34 622 730 144', status: 'Prospecto', createdAt: dateOffset(-19), notes: [{ id: 'n-marcos', text: 'Contacto inicial en el encuentro de diseño. Interesado en una propuesta para el equipo.', createdAt: dateOffset(-5) }], tasks: [{ id: 't-marcos', title: 'Agendar llamada de descubrimiento', due: dateOffset(2), done: false }] },
-    { id: 'c-amina', name: 'Amina Benali', company: 'Mercado Nómada', email: 'amina@mercadonomada.com', phone: '+34 644 518 206', status: 'Activo', createdAt: dateOffset(-91), notes: [{ id: 'n-amina', text: 'Proyecto en marcha. Próxima revisión de avance a principios de mes.', createdAt: dateOffset(-8) }], tasks: [{ id: 't-amina', title: 'Preparar revisión mensual', due: dateOffset(4), done: false }] },
-    { id: 'c-diego', name: 'Diego Ríos', company: 'Ríos & Co.', email: 'diego@riosco.es', phone: '+34 677 092 751', status: 'Inactivo', createdAt: dateOffset(-160), notes: [], tasks: [{ id: 't-diego', title: 'Retomar conversación en octubre', due: dateOffset(8), done: false }] },
-    { id: 'c-sofia', name: 'Sofía Campos', company: 'Casa Junco', email: 'sofia@casajunco.es', phone: '+34 699 314 582', status: 'Prospecto', createdAt: dateOffset(-7), notes: [], tasks: [] },
-  ];
-}
-
 function loadClients() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
