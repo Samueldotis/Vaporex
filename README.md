@@ -12,7 +12,6 @@ Abre `index.html` en un navegador moderno. No requiere instalación, servidor ni
 - Búsqueda por nombre, empresa o correo y filtro por estado.
 - Notas y recordatorios con fecha, estado de completado y aviso de vencimiento.
 - Resumen de clientes y vista de próximos pasos.
-- Datos de ejemplo editables para empezar.
 
 ## Datos
 

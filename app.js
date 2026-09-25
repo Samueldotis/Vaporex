@@ -1,5 +1,6 @@
 const STORAGE_KEY = 'trama-clientes-v1';
 const statuses = ['Activo', 'Prospecto', 'Inactivo'];
+const EXAMPLE_CLIENT_IDS = new Set(['c-lucia', 'c-marcos', 'c-amina', 'c-diego', 'c-sofia']);
 const clientList = document.querySelector('#client-list');
 const detailPanel = document.querySelector('#detail-panel');
 const dialog = document.querySelector('#client-dialog');
@@ -19,17 +20,27 @@ function makeId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+
 function loadClients() {
+  let parsed;
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) return parsed;
-    }
+    parsed = saved ? JSON.parse(saved) : [];
   } catch (error) {
     console.warn('No se pudieron leer los datos guardados.', error);
+    return [];
   }
-  return createExamples();
+  if (!Array.isArray(parsed)) return [];
+
+  const clientsWithoutExamples = parsed.filter((client) => !EXAMPLE_CLIENT_IDS.has(client?.id));
+  if (clientsWithoutExamples.length !== parsed.length) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(clientsWithoutExamples));
+    } catch (error) {
+      console.warn('No se pudieron eliminar los clientes de ejemplo guardados.', error);
+    }
+  }
+  return clientsWithoutExamples;
 }
 
 let clients = loadClients();
