@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'trama-clientes-v1';
+const statuses = ['Activo', 'Prospecto', 'Inactivo'];
 const EXAMPLE_CLIENT_IDS = new Set(['c-lucia', 'c-marcos', 'c-amina', 'c-diego', 'c-sofia']);
 const clientList = document.querySelector('#client-list');
 const detailPanel = document.querySelector('#detail-panel');
@@ -20,44 +21,37 @@ function makeId() {
 }
 
 
-function loadClients() {
-  let parsed;
+async function loadClients() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    parsed = saved ? JSON.parse(saved) : [];
+    const res = await fetch('/api/clientes');
+    if (!res.ok) throw new Error(`API respondió ${res.status}`);
+    const parsed = await res.json();
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((client) => !EXAMPLE_CLIENT_IDS.has(client?.id));
   } catch (error) {
-    console.warn('No se pudieron leer los datos guardados.', error);
+    console.warn('No se pudieron leer los datos desde el servidor.', error);
+    showToast('No se pudo conectar con el servidor. Revisa tu conexión.');
     return [];
   }
-  if (!Array.isArray(parsed)) return [];
-
-  const clientsWithoutExamples = parsed.filter((client) => client && typeof client === 'object' && !EXAMPLE_CLIENT_IDS.has(client.id));
-  const clientsWithoutStatuses = clientsWithoutExamples.map((client) => {
-    const { status, ...clientWithoutStatus } = client;
-    return clientWithoutStatus;
-  });
-  const hadStatuses = clientsWithoutExamples.some((client) => Object.prototype.hasOwnProperty.call(client, 'status'));
-  if (clientsWithoutStatuses.length !== parsed.length || hadStatuses) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(clientsWithoutStatuses));
-    } catch (error) {
-      console.warn('No se pudieron actualizar los datos guardados.', error);
-    }
-  }
-  return clientsWithoutStatuses;
 }
 
-let clients = loadClients();
-let selectedId = clients[0]?.id ?? null;
+let clients = [];
+let selectedId = null;
 let currentView = 'clients';
+let statusFilter = 'all';
 let searchTerm = '';
 let toastTimer;
 
-function saveClients() {
+async function saveClients() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
+    const res = await fetch('/api/clientes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(clients),
+    });
+    if (!res.ok) throw new Error(`API respondió ${res.status}`);
   } catch (error) {
-    showToast('No se pudieron guardar los cambios en este dispositivo.');
+    showToast('No se pudieron guardar los cambios en el servidor.');
     console.warn('No se pudieron guardar los datos.', error);
   }
 }
@@ -84,6 +78,10 @@ function formatDate(value, options = { day: 'numeric', month: 'short' }) {
   return new Intl.DateTimeFormat('es-ES', options).format(date);
 }
 
+function statusClass(status) {
+  return status === 'Prospecto' ? 'status-prospecto' : status === 'Inactivo' ? 'status-inactivo' : '';
+}
+
 function pendingTasks() {
   return clients.flatMap((client) => client.tasks.filter((task) => !task.done).map((task) => ({ ...task, clientId: client.id, clientName: client.name, company: client.company })))
     .sort((first, second) => first.due.localeCompare(second.due));
@@ -91,6 +89,8 @@ function pendingTasks() {
 
 function updateStats() {
   document.querySelector('#stat-total').textContent = clients.length;
+  document.querySelector('#stat-active').textContent = clients.filter((client) => client.status === 'Activo').length;
+  document.querySelector('#stat-prospects').textContent = clients.filter((client) => client.status === 'Prospecto').length;
   document.querySelector('#stat-due').textContent = pendingTasks().filter((task) => task.due <= dateOffset(7)).length;
   document.querySelector('#nav-client-count').textContent = clients.length;
   document.querySelector('#nav-reminder-count').textContent = pendingTasks().length;
@@ -99,8 +99,9 @@ function updateStats() {
 function visibleClients() {
   const normalizedSearchTerm = normalizeSearch(searchTerm);
   return clients.filter((client) => {
+    const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
     const searchable = normalizeSearch(`${client.name} ${client.company} ${client.email}`);
-    return searchable.includes(normalizedSearchTerm);
+    return matchesStatus && searchable.includes(normalizedSearchTerm);
   }).sort((first, second) => first.name.localeCompare(second.name, 'es'));
 }
 
@@ -132,6 +133,7 @@ function renderClientRows() {
     <button class="client-row ${client.id === selectedId ? 'is-selected' : ''}" type="button" data-client-id="${escapeHTML(client.id)}">
       <span class="client-avatar tone-${toneFor(client.name)}">${escapeHTML(initials(client.name))}</span>
       <span class="client-row-main"><span class="client-row-name">${escapeHTML(client.name)}</span><span class="client-row-company">${escapeHTML(client.company || client.email || 'Sin empresa')}</span></span>
+      <span class="status-pill ${statusClass(client.status)}">${escapeHTML(client.status)}</span>
     </button>`).join('');
 }
 
@@ -165,6 +167,7 @@ function renderDetail() {
       <div class="detail-identity"><span class="detail-avatar tone-${toneFor(client.name)}">${escapeHTML(initials(client.name))}</span><div><h2 class="detail-name">${escapeHTML(client.name)}</h2><p class="detail-company">${escapeHTML(client.company || 'Sin empresa')}</p></div></div>
       <div class="detail-menu"><button class="icon-button" type="button" data-action="edit-client" aria-label="Editar cliente" title="Editar cliente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 4 4 4M4 20l4-.8L19.4 7.8a2.1 2.1 0 0 0-3-3L5 16.2 4 20Z"/></svg></button><button class="icon-button" type="button" data-action="delete-client" aria-label="Eliminar cliente" title="Eliminar cliente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6"/></svg></button></div>
     </div>
+    <div class="detail-status-row"><span class="detail-label">ESTADO</span><span class="status-pill ${statusClass(client.status)}">${escapeHTML(client.status)}</span></div>
     <div class="contact-list">
       <div class="contact-item">${renderContactIcon('mail')}<span class="${client.email ? '' : 'contact-empty'}">${escapeHTML(client.email || 'Sin correo')}</span></div>
       <div class="contact-item">${renderContactIcon('phone')}<span class="${client.phone ? '' : 'contact-empty'}">${escapeHTML(client.phone || 'Sin teléfono')}</span></div>
@@ -193,7 +196,9 @@ function updatePageText() {
     pageDescription.textContent = reminders ? 'Lo pendiente, ordenado por fecha para que nada se quede atrás.' : 'Un lugar claro para cada relación y su próximo paso.';
   }
   document.querySelector('#search-input').disabled = reminders;
+  document.querySelector('#status-filter').disabled = reminders;
   document.querySelector('.search-box').classList.toggle('is-disabled', reminders);
+  document.querySelector('.filter-select-wrap').classList.toggle('is-disabled', reminders);
 }
 
 function render() {
@@ -217,6 +222,7 @@ function openClientDialog(client) {
   clientForm.elements.company.value = client?.company ?? '';
   clientForm.elements.email.value = client?.email ?? '';
   clientForm.elements.phone.value = client?.phone ?? '';
+  clientForm.elements.status.value = client?.status ?? 'Prospecto';
   document.querySelector('#dialog-title').textContent = client ? 'Editar cliente' : 'Nuevo cliente';
   dialog.showModal();
   clientForm.elements.name.focus();
@@ -229,6 +235,7 @@ function closeClientDialog() {
 document.querySelector('#today-label').textContent = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date());
 document.querySelector('#add-client-button').addEventListener('click', () => openClientDialog());
 document.querySelector('#search-input').addEventListener('input', (event) => { searchTerm = event.target.value.trim(); renderClientRows(); });
+document.querySelector('#status-filter').addEventListener('change', (event) => { statusFilter = event.target.value; renderClientRows(); });
 
 document.querySelector('.primary-nav').addEventListener('click', (event) => {
   const button = event.target.closest('[data-view]');
@@ -256,6 +263,7 @@ clientForm.addEventListener('submit', (event) => {
     company: String(formData.get('company')).trim(),
     email: String(formData.get('email')).trim(),
     phone: String(formData.get('phone')).trim(),
+    status: statuses.includes(formData.get('status')) ? formData.get('status') : 'Prospecto',
   };
   if (id) {
     clients = clients.map((client) => client.id === id ? { ...client, ...values } : client);
@@ -265,6 +273,8 @@ clientForm.addEventListener('submit', (event) => {
     clients = [client, ...clients];
     selectedId = client.id;
     currentView = 'clients';
+    statusFilter = 'all';
+    document.querySelector('#status-filter').value = 'all';
     showToast('Cliente añadido a tu espacio.');
   }
   saveClients();
@@ -335,4 +345,10 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-render();
+async function init() {
+  clients = await loadClients();
+  selectedId = clients[0]?.id ?? null;
+  render();
+}
+
+init();
