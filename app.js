@@ -21,40 +21,37 @@ function makeId() {
 }
 
 
-function loadClients() {
-  let parsed;
+async function loadClients() {
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    parsed = saved ? JSON.parse(saved) : [];
+    const res = await fetch('/api/clientes');
+    if (!res.ok) throw new Error(`API respondió ${res.status}`);
+    const parsed = await res.json();
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((client) => !EXAMPLE_CLIENT_IDS.has(client?.id));
   } catch (error) {
-    console.warn('No se pudieron leer los datos guardados.', error);
+    console.warn('No se pudieron leer los datos desde el servidor.', error);
+    showToast('No se pudo conectar con el servidor. Revisa tu conexión.');
     return [];
   }
-  if (!Array.isArray(parsed)) return [];
-
-  const clientsWithoutExamples = parsed.filter((client) => !EXAMPLE_CLIENT_IDS.has(client?.id));
-  if (clientsWithoutExamples.length !== parsed.length) {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(clientsWithoutExamples));
-    } catch (error) {
-      console.warn('No se pudieron eliminar los clientes de ejemplo guardados.', error);
-    }
-  }
-  return clientsWithoutExamples;
 }
 
-let clients = loadClients();
-let selectedId = clients[0]?.id ?? null;
+let clients = [];
+let selectedId = null;
 let currentView = 'clients';
 let statusFilter = 'all';
 let searchTerm = '';
 let toastTimer;
 
-function saveClients() {
+async function saveClients() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
+    const res = await fetch('/api/clientes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(clients),
+    });
+    if (!res.ok) throw new Error(`API respondió ${res.status}`);
   } catch (error) {
-    showToast('No se pudieron guardar los cambios en este dispositivo.');
+    showToast('No se pudieron guardar los cambios en el servidor.');
     console.warn('No se pudieron guardar los datos.', error);
   }
 }
@@ -348,4 +345,10 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-render();
+async function init() {
+  clients = await loadClients();
+  selectedId = clients[0]?.id ?? null;
+  render();
+}
+
+init();
