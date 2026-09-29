@@ -1,6 +1,6 @@
 # Vaporex
 
-App web local para organizar clientes, notas y próximos pasos.
+App web local para organizar clientes y notas.
 
 ## Uso
 
@@ -10,8 +10,8 @@ Abre `index.html` en un navegador moderno. No requiere instalación, servidor ni
 
 - Alta, edición y eliminación de fichas de clientes.
 - Búsqueda por nombre, empresa o correo.
-- Notas y recordatorios con fecha, estado de completado y aviso de vencimiento.
-- Resumen de clientes y vista de próximos pasos.
+- Notas para cada cliente.
+- Resumen del total de clientes.
 
 ## Datos
 
