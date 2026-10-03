@@ -299,11 +299,21 @@ function renderAgenda() {
   }).join('');
 
   const monthLabel = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(firstOfMonth);
-  const monthServices = state.services.filter((service) => service.date.startsWith(monthPrefix));
+  const monthServices = state.services
+    .filter((service) => service.date.startsWith(monthPrefix))
+    .sort((first, second) => `${first.date}T${first.time || '00:00'}`.localeCompare(`${second.date}T${second.time || '00:00'}`));
   $('#calendar-month-label').textContent = monthLabel;
   $('#calendar-service-count').textContent = `${monthServices.length} ${monthServices.length === 1 ? 'servicio este mes' : 'servicios este mes'}`;
   $('#calendar-month-filter').value = monthPrefix.slice(0, -1);
   $('#calendar-grid').innerHTML = `${weekdays}${days}`;
+  $('#calendar-mobile-events').innerHTML = monthServices.map((service) => {
+    const client = state.clients.find((item) => item.id === service.clientId);
+    return `<button class="calendar-mobile-event" type="button" data-calendar-service="${escapeHTML(service.id)}">
+      <time>${escapeHTML(formatDate(service.date, { day: 'numeric', month: 'short' }))} · ${escapeHTML(formatTime(service.time))}</time>
+      <span>${escapeHTML(service.type || 'Servicio')}</span>
+      <small>${escapeHTML(client?.name || 'Cliente no disponible')}</small>
+    </button>`;
+  }).join('');
   const emptyMessage = $('#calendar-empty');
   emptyMessage.textContent = monthServices.length
     ? ''
