@@ -1,17 +1,26 @@
 const STORAGE_KEY = 'trama-clientes-v1';
 const EXAMPLE_CLIENT_IDS = new Set(['c-lucia', 'c-marcos', 'c-amina', 'c-diego', 'c-sofia']);
+const SERVICE_OPTIONS = ['Limpieza profunda', 'Bote de agua', 'Reparación tarjeta electrónica', 'Instalación de aires'];
+const ZONE_OPTIONS = ['Sin zona', 'Norte', 'Centro', 'Sur', 'Este', 'Oeste'];
 
 const $ = (selector) => document.querySelector(selector);
 const clientList = $('#client-list');
 const detailPanel = $('#detail-panel');
 const dialog = $('#client-dialog');
 const clientForm = $('#client-form');
+const serviceDialog = $('#service-dialog');
+const serviceForm = $('#service-form');
 const toast = $('#toast');
 
 const state = {
   clients: [],
+  services: [],
   selectedId: null,
+  view: 'clients',
+  calendarMonth: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   searchTerm: '',
+  serviceFilter: 'all',
+  zoneFilter: 'all',
   toastTimer: null,
 };
 
@@ -25,36 +34,63 @@ function makeId() {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function loadClients() {
-  let parsed = [];
+function normalizeClient(client) {
+  return {
+    ...client,
+    name: String(client.name ?? '').trim(),
+    company: String(client.company ?? '').trim(),
+    email: String(client.email ?? '').trim(),
+    phone: String(client.phone ?? '').trim(),
+    locationUrl: String(client.locationUrl ?? '').trim(),
+    zone: ZONE_OPTIONS.includes(client.zone) ? client.zone : 'Sin zona',
+    notes: Array.isArray(client.notes) ? client.notes : [],
+    createdAt: client.createdAt || dateOffset(0),
+  };
+}
+
+function loadData() {
+  let parsed = null;
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     parsed = saved ? JSON.parse(saved) : [];
   } catch (error) {
     console.warn('No se pudieron leer los datos guardados.', error);
-    return [];
+    return { clients: [], services: [] };
   }
 
-  if (!Array.isArray(parsed)) return [];
+  const clientsSource = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.clients) ? parsed.clients : [];
+  const servicesSource = !Array.isArray(parsed) && Array.isArray(parsed?.services) ? parsed.services : [];
 
-  const sanitized = parsed.filter((client) => client && typeof client === 'object' && !EXAMPLE_CLIENT_IDS.has(client.id));
-  const cleaned = sanitized.map(({ status, ...client }) => client);
-  const upgraded = cleaned.length !== parsed.length || sanitized.some((client) => Object.prototype.hasOwnProperty.call(client, 'status'));
+  const sanitized = clientsSource.filter((client) => client && typeof client === 'object' && !EXAMPLE_CLIENT_IDS.has(client.id));
+  const cleaned = sanitized.map((client) => normalizeClient(client));
+  const services = servicesSource
+    .filter((service) => service && typeof service.id === 'string' && typeof service.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(service.date))
+    .map((service) => ({
+      ...service,
+      time: typeof service.time === 'string' ? service.time : '09:00',
+      type: SERVICE_OPTIONS.includes(service.type) ? service.type : 'Servicio',
+      quantity: Number.isFinite(Number(service.quantity)) ? Math.max(0, Number(service.quantity)) : 0,
+    }));
+
+  const upgraded = Array.isArray(parsed)
+    || cleaned.length !== clientsSource.length
+    || services.length !== servicesSource.length
+    || sanitized.some((client) => Object.prototype.hasOwnProperty.call(client, 'status'));
 
   if (upgraded) {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleaned));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ clients: cleaned, services }));
     } catch (error) {
       console.warn('No se pudieron actualizar los datos guardados.', error);
     }
   }
 
-  return cleaned;
+  return { clients: cleaned, services };
 }
 
-function saveClients() {
+function saveData() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.clients));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ clients: state.clients, services: state.services }));
   } catch (error) {
     showToast('No se pudieron guardar los cambios en este dispositivo.');
     console.warn('No se pudieron guardar los datos.', error);
@@ -72,15 +108,15 @@ function escapeHTML(value = '') {
 }
 
 function initials(name = '') {
-  return name.trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? '').join('').toUpperCase();
+  return String(name).trim().split(/\s+/).slice(0, 2).map((part) => part[0] ?? '').join('').toUpperCase();
 }
 
 function normalizeSearch(value = '') {
-  return String(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
+  return String(value).normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase('es');
 }
 
 function toneFor(name = '') {
-  return [...name].reduce((sum, character) => sum + character.charCodeAt(0), 0) % 5;
+  return [...String(name)].reduce((sum, character) => sum + character.charCodeAt(0), 0) % 5;
 }
 
 function formatDate(value, options = { day: 'numeric', month: 'short' }) {
@@ -88,10 +124,36 @@ function formatDate(value, options = { day: 'numeric', month: 'short' }) {
   return new Intl.DateTimeFormat('es-ES', options).format(new Date(`${value}T12:00:00`));
 }
 
+function formatTime(value) {
+  if (!value) return 'Sin horario';
+  const [hours, minutes] = String(value).split(':');
+  const date = new Date();
+  date.setHours(Number(hours) || 0, Number(minutes) || 0, 0, 0);
+  return new Intl.DateTimeFormat('es-ES', { hour: 'numeric', minute: '2-digit' }).format(date);
+}
+
+function getServiceMatchesFilter(client) {
+  const clientServices = state.services.filter((service) => service.clientId === client.id);
+
+  if (state.serviceFilter === 'today') {
+    return clientServices.some((service) => service.date === dateOffset(0));
+  }
+
+  if (state.serviceFilter === 'scheduled') {
+    return clientServices.length > 0;
+  }
+
+  return true;
+}
+
 function visibleClients() {
   const normalizedSearchTerm = normalizeSearch(state.searchTerm);
   return state.clients
-    .filter((client) => normalizeSearch(`${client.name} ${client.company} ${client.email}`).includes(normalizedSearchTerm))
+    .filter((client) => {
+      const matchesSearch = normalizeSearch(`${client.name} ${client.company} ${client.email} ${client.zone}`).includes(normalizedSearchTerm);
+      const matchesZone = state.zoneFilter === 'all' || (client.zone || 'Sin zona') === state.zoneFilter;
+      return matchesSearch && matchesZone && getServiceMatchesFilter(client);
+    })
     .sort((first, second) => first.name.localeCompare(second.name, 'es'));
 }
 
@@ -104,9 +166,74 @@ function updateStats() {
   $('#nav-client-count').textContent = state.clients.length;
 }
 
+function getGoogleCalendarUrl(client, service) {
+  const start = new Date(`${service.date}T${service.time || '09:00'}:00`);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  const formatGoogleDate = (date) => date.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}Z$/, 'Z');
+  const details = [
+    `Cliente: ${client.name}`,
+    `Servicio: ${service.type}`,
+    client.company ? `Dirección: ${client.company}` : '',
+    client.locationUrl ? `Ubicación: ${client.locationUrl}` : '',
+    `Zona: ${client.zone || 'Sin zona'}`,
+  ].filter(Boolean).join('\n');
+
+  const url = new URL('https://calendar.google.com/calendar/render');
+  url.searchParams.set('action', 'TEMPLATE');
+  url.searchParams.set('text', `${client.name} - ${service.type}`);
+  url.searchParams.set('dates', `${formatGoogleDate(start)}/${formatGoogleDate(end)}`);
+  url.searchParams.set('details', details);
+  url.searchParams.set('location', client.locationUrl || client.company || client.name);
+  return url.toString();
+}
+
+function renderClientServices(client) {
+  const services = state.services
+    .filter((service) => service.clientId === client.id)
+    .sort((first, second) => {
+      const firstKey = `${first.date}T${first.time || '00:00'}`;
+      const secondKey = `${second.date}T${second.time || '00:00'}`;
+      return firstKey.localeCompare(secondKey);
+    });
+
+  const rows = services.length ? services.map((service) => {
+    const quantityValue = Number(service.quantity) || 0;
+    const quantityLabel = quantityValue > 0
+      ? `<span class="service-quantity">${quantityValue} ${quantityValue === 1 ? 'aire' : 'aires'}</span>`
+      : '';
+
+    return `
+    <div class="service-card">
+      <div class="service-card-main">
+        <div class="service-title-wrap">
+          <span class="service-type">${escapeHTML(service.type || 'Servicio')}</span>
+          ${quantityLabel}
+        </div>
+        <time>${escapeHTML(formatDate(service.date, { day: 'numeric', month: 'short', year: 'numeric' }))} · ${escapeHTML(formatTime(service.time))}</time>
+      </div>
+      <div class="service-card-actions">
+        <a class="calendar-link" href="${escapeHTML(getGoogleCalendarUrl(client, service))}" target="_blank" rel="noopener noreferrer">Google Calendar</a>
+        <button class="text-action danger" type="button" data-action="delete-service" data-service-id="${escapeHTML(service.id)}">Eliminar</button>
+      </div>
+    </div>`;
+  }).join('') : '<div class="empty-section">Aún no hay servicios registrados para este cliente.</div>';
+
+  return `
+    <section class="detail-section">
+      <div class="section-heading">
+        <h3>Servicios agendados <span class="section-count">${services.length}</span></h3>
+        <button class="text-action" type="button" data-action="register-service">+ Añadir</button>
+      </div>
+      <div class="service-date-list">${rows}</div>
+    </section>`;
+}
+
 function renderClientRows() {
   const listResultCount = $('#list-result-count');
+  const listHeading = $('#list-heading');
+  const filterKey = state.serviceFilter === 'today' ? 'SERVICIOS DE HOY' : state.serviceFilter === 'scheduled' ? 'SERVICIOS AGENDADOS' : 'CLIENTES';
 
+  listHeading.textContent = filterKey;
   const list = visibleClients();
   listResultCount.textContent = `${list.length} ${list.length === 1 ? 'resultado' : 'resultados'}`;
 
@@ -120,16 +247,75 @@ function renderClientRows() {
       <span class="client-avatar tone-${toneFor(client.name)}">${escapeHTML(initials(client.name))}</span>
       <span class="client-row-main">
         <span class="client-row-name">${escapeHTML(client.name)}</span>
-        <span class="client-row-company">${escapeHTML(client.company || client.email || 'Sin empresa')}</span>
+        <span class="client-row-company">${escapeHTML(client.company || client.email || client.zone || 'Sin empresa')}</span>
       </span>
     </button>`).join('');
+}
+
+function calendarDateKey(date) {
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+}
+
+function renderAgenda() {
+  const year = state.calendarMonth.getFullYear();
+  const month = state.calendarMonth.getMonth();
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}-`;
+  const firstOfMonth = new Date(year, month, 1);
+  const firstVisibleDate = new Date(year, month, 1 - ((firstOfMonth.getDay() + 6) % 7));
+  const dayCount = new Date(year, month + 1, 0).getDate();
+  const weekCount = Math.max(5, Math.ceil((((firstOfMonth.getDay() + 6) % 7) + dayCount) / 7));
+  const today = dateOffset(0);
+  const servicesByDate = new Map();
+
+  state.services.forEach((service) => {
+    if (!service.date.startsWith(monthPrefix)) return;
+    const dayServices = servicesByDate.get(service.date) ?? [];
+    dayServices.push(service);
+    servicesByDate.set(service.date, dayServices);
+  });
+
+  const weekdays = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+    .map((day) => `<div class="calendar-weekday">${day}</div>`).join('');
+  const days = Array.from({ length: weekCount * 7 }, (_, index) => {
+    const date = new Date(firstVisibleDate);
+    date.setDate(firstVisibleDate.getDate() + index);
+    const dateKey = calendarDateKey(date);
+    const dayServices = (servicesByDate.get(dateKey) ?? [])
+      .sort((first, second) => (first.time || '').localeCompare(second.time || ''));
+    const events = dayServices.map((service) => {
+      const client = state.clients.find((item) => item.id === service.clientId);
+      const clientName = client?.name || 'Cliente no disponible';
+      return `<button class="calendar-event" type="button" data-calendar-service="${escapeHTML(service.id)}" aria-label="${escapeHTML(`${formatTime(service.time)}: ${service.type}, ${clientName}`)}">
+        <time>${escapeHTML(formatTime(service.time))}</time>
+        <span>${escapeHTML(service.type || 'Servicio')}</span>
+        <small>${escapeHTML(clientName)}</small>
+      </button>`;
+    }).join('');
+
+    return `<div class="calendar-day ${date.getMonth() !== month ? 'is-outside-month' : ''} ${dateKey === today ? 'is-today' : ''}" aria-label="${escapeHTML(formatDate(dateKey, { day: 'numeric', month: 'long', year: 'numeric' }))}">
+      <span class="calendar-day-number">${date.getDate()}</span>
+      <div class="calendar-day-events">${events}</div>
+    </div>`;
+  }).join('');
+
+  const monthLabel = new Intl.DateTimeFormat('es-ES', { month: 'long', year: 'numeric' }).format(firstOfMonth);
+  const monthServices = state.services.filter((service) => service.date.startsWith(monthPrefix));
+  $('#calendar-month-label').textContent = monthLabel;
+  $('#calendar-service-count').textContent = `${monthServices.length} ${monthServices.length === 1 ? 'servicio este mes' : 'servicios este mes'}`;
+  $('#calendar-month-filter').value = monthPrefix.slice(0, -1);
+  $('#calendar-grid').innerHTML = `${weekdays}${days}`;
+  const emptyMessage = $('#calendar-empty');
+  emptyMessage.textContent = monthServices.length
+    ? ''
+    : 'No hay servicios agendados para este mes.';
+  emptyMessage.hidden = monthServices.length > 0;
 }
 
 function renderContactIcon(kind) {
   const icons = {
     mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
     phone: '<path d="M21 16.5v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.65-3.08 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 1.07 3.74 2 2 0 0 1 3.06 1.5h3a2 2 0 0 1 2 1.72c.12.96.35 1.91.69 2.82a2 2 0 0 1-.45 2.11L7.03 9.42a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.86.57 2.82.69A2 2 0 0 1 21 16.5Z"/>',
-    aircon: '<rect x="3" y="4" width="18" height="8" rx="2"/><path d="M7 16c0 2 2 2 2 4m6-4c0 2 2 2 2 4M6 8h12"/>',
+    location: '<path d="M12 22s7-5.2 7-12a7 7 0 0 0-14 0c0 6.8 7 12 7 12Z"/><circle cx="12" cy="10" r="2.5"/>',
   };
   return `<svg viewBox="0 0 24 24" aria-hidden="true">${icons[kind]}</svg>`;
 }
@@ -138,12 +324,13 @@ function renderDetail() {
   const client = getSelectedClient();
   if (!client) {
     detailPanel.innerHTML = '<div class="detail-empty"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M10 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm10 10v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg><strong>Elige una relación</strong><p>Selecciona un cliente para ver sus datos y notas.</p></div>';
-    return; 
+    return;
   }
 
   const notes = [...client.notes].sort((first, second) => second.createdAt.localeCompare(first.createdAt));
-  const airConditionerQuantity = client.Quantity === '' || client.Quantity == null ? null : Number(client.Quantity);
-  const hasAirConditionerQuantity = Number.isInteger(airConditionerQuantity) && airConditionerQuantity >= 0;
+  const zoneText = client.zone || 'Sin zona';
+  const locationText = client.company || 'Sin dirección';
+  const locationUrl = client.locationUrl && client.locationUrl.trim();
 
   detailPanel.innerHTML = `
     <div class="detail-topline">
@@ -151,7 +338,7 @@ function renderDetail() {
         <span class="detail-avatar tone-${toneFor(client.name)}">${escapeHTML(initials(client.name))}</span>
         <div>
           <h2 class="detail-name">${escapeHTML(client.name)}</h2>
-          <p class="detail-company">${escapeHTML(client.company || 'Sin empresa')}</p>
+          <p class="detail-company">${escapeHTML(locationText)}</p>
         </div>
       </div>
       <div class="detail-menu">
@@ -159,9 +346,14 @@ function renderDetail() {
         <button class="icon-button" type="button" data-action="delete-client" aria-label="Eliminar cliente" title="Eliminar cliente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6"/></svg></button>
       </div>
     </div>
+    <div class="detail-meta-row">
+      <span class="zone-badge">${escapeHTML(zoneText)}</span>
+      ${locationUrl ? `<a class="location-link" href="${escapeHTML(locationUrl)}" target="_blank" rel="noopener noreferrer">Ver ubicación</a>` : '<span class="location-link is-disabled">Sin URL</span>'}
+    </div>
     <div class="contact-list">
       <div class="contact-item">${renderContactIcon('mail')}<span class="${client.email ? '' : 'contact-empty'}">${escapeHTML(client.email || 'Sin correo')}</span></div>
       <div class="contact-item">${renderContactIcon('phone')}<span class="${client.phone ? '' : 'contact-empty'}">${escapeHTML(client.phone || 'Sin teléfono')}</span></div>
+      <div class="contact-item contact-item-full">${renderContactIcon('location')}<span>${escapeHTML(locationText)}</span></div>
     </div>
     <section class="detail-section">
       <div class="section-heading">
@@ -174,17 +366,7 @@ function renderDetail() {
         <button class="button button-primary" type="submit">Guardar nota</button>
       </form>
     </section>
-    <section class="detail-section">
-      <div class="section-heading">
-        <h3>Aires acondicionados</h3>
-        <button class="text-action" type="button" data-action="show-quantity-form">+ Añadir</button>
-      </div>
-      ${hasAirConditionerQuantity ? `<div class="contact-item">${renderContactIcon('aircon')}<span>${airConditionerQuantity} ${airConditionerQuantity === 1 ? 'aire acondicionado' : 'aires acondicionados'}</span></div>` : '<div class="empty-section">Sin cantidad registrada.</div>'}
-      <form class="inline-form" id="quantity-form" hidden>
-        <input name="quantity" type="number" min="0" step="1" required value="${hasAirConditionerQuantity ? airConditionerQuantity : ''}" placeholder="Cantidad" aria-label="Cantidad de aires acondicionados">
-        <button class="button button-primary" type="submit">${hasAirConditionerQuantity ? 'Guardar' : 'Añadir'}</button>
-      </form>
-    </section>
+    ${renderClientServices(client)}
     <div class="detail-footer">
       <span>Cliente desde <strong>${escapeHTML(formatDate(client.createdAt, { day: 'numeric', month: 'long', year: 'numeric' }))}</strong></span>
       <span>${client.notes.length} ${client.notes.length === 1 ? 'nota' : 'notas'}</span>
@@ -192,16 +374,28 @@ function renderDetail() {
 }
 
 function updatePageText() {
-  $('#page-crumb').textContent = 'Clientes';
-  $('#page-title').textContent = 'Clientes';
-  $('#page-eyebrow').textContent = 'RELACIONES';
+  const isAgenda = state.view === 'agenda';
+  $('#page-crumb').textContent = isAgenda ? 'Agenda' : 'Clientes';
+  $('#page-title').textContent = isAgenda ? 'Agenda' : 'Clientes';
+  $('#page-eyebrow').textContent = isAgenda ? 'SERVICIOS' : 'RELACIONES';
+  $('#agenda-panel').hidden = !isAgenda;
+  $('#clients-workspace').hidden = isAgenda;
+  $('#client-stats').hidden = isAgenda;
+  document.querySelectorAll('[data-view]').forEach((button) => {
+    const isActive = button.dataset.view === state.view;
+    button.classList.toggle('is-active', isActive);
+    button.setAttribute('aria-pressed', String(isActive));
+  });
 }
 
 function render() {
   updateStats();
   updatePageText();
+  $('#service-filter').value = state.serviceFilter;
+  $('#zone-filter').value = state.zoneFilter;
   renderClientRows();
   renderDetail();
+  renderAgenda();
 }
 
 function showToast(message) {
@@ -216,9 +410,10 @@ function openClientDialog(client) {
   clientForm.elements.id.value = client?.id ?? '';
   clientForm.elements.name.value = client?.name ?? '';
   clientForm.elements.company.value = client?.company ?? '';
+  clientForm.elements.locationUrl.value = client?.locationUrl ?? '';
+  clientForm.elements.zone.value = client?.zone ?? 'Sin zona';
   clientForm.elements.email.value = client?.email ?? '';
   clientForm.elements.phone.value = client?.phone ?? '';
-  clientForm.elements.Quantity.value = client?.Quantity ?? '';
   $('#dialog-title').textContent = client ? 'Editar cliente' : 'Nuevo cliente';
   dialog.showModal();
   clientForm.elements.name.focus();
@@ -230,9 +425,24 @@ function closeClientDialog() {
 
 $('#today-label').textContent = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date());
 $('#add-client-button').addEventListener('click', () => openClientDialog());
+document.querySelector('.primary-nav').addEventListener('click', (event) => {
+  const button = event.target.closest('[data-view]');
+  if (!button) return;
+  state.view = button.dataset.view;
+  render();
+});
 $('#search-input').addEventListener('input', (event) => {
   state.searchTerm = event.target.value.trim();
   renderClientRows();
+  renderDetail();
+});
+$('#service-filter').addEventListener('change', (event) => {
+  state.serviceFilter = event.target.value;
+  render();
+});
+$('#zone-filter').addEventListener('change', (event) => {
+  state.zoneFilter = event.target.value;
+  render();
 });
 
 clientList.addEventListener('click', (event) => {
@@ -247,6 +457,38 @@ dialog.addEventListener('click', (event) => {
   if (event.target === dialog) closeClientDialog();
 });
 
+document.querySelectorAll('[data-close-service-dialog]').forEach((button) => button.addEventListener('click', () => serviceDialog.close()));
+serviceDialog.addEventListener('click', (event) => {
+  if (event.target === serviceDialog) serviceDialog.close();
+});
+
+serviceForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const client = getSelectedClient();
+  if (!client) return;
+
+  const formData = new FormData(serviceForm);
+  const date = String(formData.get('date'));
+  const time = String(formData.get('time'));
+  const serviceType = String(formData.get('serviceType'));
+  const quantity = Number(formData.get('quantity')) || 0;
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !time || !serviceType) return;
+
+  state.services.push({
+    id: makeId(),
+    clientId: client.id,
+    date,
+    time,
+    type: serviceType,
+    quantity: Math.max(0, Math.floor(quantity)),
+  });
+  saveData();
+  serviceDialog.close();
+  render();
+  showToast('Servicio registrado.');
+});
+
 clientForm.addEventListener('submit', (event) => {
   event.preventDefault();
 
@@ -257,8 +499,14 @@ clientForm.addEventListener('submit', (event) => {
     company: String(formData.get('company')).trim(),
     email: String(formData.get('email')).trim(),
     phone: String(formData.get('phone')).trim(),
-    Quantity: String(formData.get('Quantity')).trim(),
+    locationUrl: String(formData.get('locationUrl')).trim(),
+    zone: String(formData.get('zone') || 'Sin zona').trim() || 'Sin zona',
   };
+
+  if (!values.name) {
+    showToast('El nombre del cliente es obligatorio.');
+    return;
+  }
 
   if (id) {
     state.clients = state.clients.map((client) => (client.id === id ? { ...client, ...values } : client));
@@ -270,7 +518,7 @@ clientForm.addEventListener('submit', (event) => {
     showToast('Cliente añadido a tu espacio.');
   }
 
-  saveClients();
+  saveData();
   closeClientDialog();
   render();
 });
@@ -293,16 +541,37 @@ detailPanel.addEventListener('click', (event) => {
     const confirmText = `¿Eliminar la ficha de ${client.name}? También se borrarán sus notas y datos asociados.`;
     if (window.confirm(confirmText)) {
       state.clients = state.clients.filter((item) => item.id !== client.id);
+      state.services = state.services.filter((service) => service.clientId !== client.id);
       state.selectedId = state.clients[0]?.id ?? null;
-      saveClients();
+      saveData();
       render();
       showToast('Cliente eliminado.');
     }
     return;
   }
 
-  if (action === 'show-note-form' || action === 'show-quantity-form') {
-    const form = detailPanel.querySelector(action === 'show-note-form' ? '#note-form' : '#quantity-form');
+  if (action === 'delete-service') {
+    const serviceId = control.dataset.serviceId;
+    state.services = state.services.filter((service) => service.id !== serviceId);
+    saveData();
+    render();
+    showToast('Servicio eliminado.');
+    return;
+  }
+
+  if (action === 'register-service') {
+    serviceForm.reset();
+    serviceForm.elements.date.value = dateOffset(0);
+    serviceForm.elements.time.value = '09:00';
+    serviceForm.elements.serviceType.value = SERVICE_OPTIONS[0];
+    serviceForm.elements.quantity.value = '';
+    serviceDialog.showModal();
+    serviceForm.elements.date.focus();
+    return;
+  }
+
+  if (action === 'show-note-form') {
+    const form = detailPanel.querySelector('#note-form');
     form.hidden = !form.hidden;
     if (!form.hidden) form.querySelector('input, textarea').focus();
   }
@@ -318,12 +587,7 @@ detailPanel.addEventListener('submit', (event) => {
   if (!client) return;
 
   const formData = new FormData(form);
-  if (form.id === 'quantity-form') {
-    const quantity = Number(formData.get('quantity'));
-    if (!Number.isInteger(quantity) || quantity < 0) return;
-    client.Quantity = String(quantity);
-    showToast('Cantidad actualizada.');
-  } else if (form.id === 'note-form') {
+  if (form.id === 'note-form') {
     const text = String(formData.get('text')).trim();
     if (!text) return;
     client.notes.push({ id: makeId(), text, createdAt: dateOffset(0) });
@@ -332,8 +596,52 @@ detailPanel.addEventListener('submit', (event) => {
     return;
   }
 
-  saveClients();
+  saveData();
   render();
+});
+
+$('#agenda-panel').addEventListener('click', (event) => {
+  const monthButton = event.target.closest('[data-calendar-month]');
+  if (monthButton) {
+    state.calendarMonth.setDate(1);
+    state.calendarMonth.setMonth(state.calendarMonth.getMonth() + Number(monthButton.dataset.calendarMonth));
+    renderAgenda();
+    return;
+  }
+
+  if (event.target.closest('[data-calendar-today]')) {
+    const now = new Date();
+    state.calendarMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    renderAgenda();
+    return;
+  }
+
+  if (event.target.closest('#reset-calendar-month')) {
+    const now = new Date();
+    state.calendarMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    renderAgenda();
+    return;
+  }
+
+  const serviceButton = event.target.closest('[data-calendar-service]');
+  if (serviceButton) {
+    const service = state.services.find((item) => item.id === serviceButton.dataset.calendarService);
+    if (!service || !state.clients.some((client) => client.id === service.clientId)) return;
+    state.selectedId = service.clientId;
+    state.view = 'clients';
+    render();
+  }
+});
+
+$('#agenda-panel').addEventListener('change', (event) => {
+  if (event.target.id === 'calendar-month-filter') {
+    const selectedMonth = event.target.value;
+    if (selectedMonth) {
+      const [year, month] = selectedMonth.split('-').map(Number);
+      state.calendarMonth = new Date(year, month - 1, 1);
+    }
+    renderAgenda();
+  }
 });
 
 document.addEventListener('keydown', (event) => {
@@ -343,6 +651,8 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-state.clients = loadClients();
+const savedData = loadData();
+state.clients = savedData.clients;
+state.services = savedData.services;
 state.selectedId = state.clients[0]?.id ?? null;
 render();

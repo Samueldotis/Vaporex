@@ -12,6 +12,7 @@ Abre `index.html` en un navegador moderno. No requiere instalación, servidor ni
 - Búsqueda por nombre, empresa o correo.
 - Notas para cada cliente.
 - Resumen del total de clientes.
+- Registro de servicios por cliente con acumulación de visitas por fecha.
 
 ## Datos
 
