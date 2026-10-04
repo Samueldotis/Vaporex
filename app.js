@@ -88,12 +88,110 @@ function loadData() {
   return { clients: cleaned, services };
 }
 
+// ---- Sincronización con la base de datos (Neon, vía /api/data) ----
+const API_URL = '/api/data';
+const SYNC_FLAG = 'trama-sync-state-v1'; // 'ok' = sincronizado, 'dirty' = cambios sin subir
+let remotePushTimer = null;
+
+function getSyncState() {
+  try { return localStorage.getItem(SYNC_FLAG); } catch (error) { return null; }
+}
+
+function setSyncState(value) {
+  try { localStorage.setItem(SYNC_FLAG, value); } catch (error) { /* sin acceso a localStorage */ }
+}
+
+function mergeById(remoteItems = [], localItems = []) {
+  const merged = new Map();
+  remoteItems.forEach((item) => { if (item && item.id) merged.set(item.id, item); });
+  localItems.forEach((item) => { if (item && item.id) merged.set(item.id, item); }); // lo local gana
+  return [...merged.values()];
+}
+
+function sanitizeRemoteClients(list) {
+  return list
+    .filter((client) => client && typeof client === 'object' && !EXAMPLE_CLIENT_IDS.has(client.id))
+    .map((client) => normalizeClient(client));
+}
+
+function sanitizeRemoteServices(list) {
+  return list
+    .filter((service) => service && typeof service.id === 'string' && typeof service.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(service.date))
+    .map((service) => ({
+      ...service,
+      time: typeof service.time === 'string' ? service.time : '09:00',
+      type: SERVICE_OPTIONS.includes(service.type) ? service.type : 'Servicio',
+      quantity: Number.isFinite(Number(service.quantity)) ? Math.max(0, Number(service.quantity)) : 0,
+    }));
+}
+
+async function pushRemote() {
+  try {
+    const response = await fetch(API_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clients: state.clients, services: state.services }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    setSyncState('ok');
+  } catch (error) {
+    console.warn('No se pudo sincronizar con la base de datos.', error);
+    showToast('Guardado en este dispositivo; falta sincronizar con la base de datos.');
+  }
+}
+
 function saveData() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ clients: state.clients, services: state.services }));
   } catch (error) {
     showToast('No se pudieron guardar los cambios en este dispositivo.');
     console.warn('No se pudieron guardar los datos.', error);
+  }
+
+  setSyncState('dirty');
+  clearTimeout(remotePushTimer);
+  remotePushTimer = setTimeout(pushRemote, 600);
+}
+
+async function loadRemote() {
+  try {
+    const response = await fetch(API_URL, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const remote = await response.json();
+
+    const remoteClients = sanitizeRemoteClients(Array.isArray(remote.clients) ? remote.clients : []);
+    const remoteServices = sanitizeRemoteServices(Array.isArray(remote.services) ? remote.services : []);
+
+    // Si hay cambios locales sin subir (o es la primera vez), se mezclan con lo de la base.
+    // Si ya estaba sincronizado, manda la base de datos.
+    const mustMerge = getSyncState() !== 'ok';
+    const remoteIsEmpty = !remoteClients.length && !remoteServices.length;
+
+    if (mustMerge || remoteIsEmpty) {
+      state.clients = mergeById(remoteClients, state.clients);
+      state.services = mergeById(remoteServices, state.services);
+    } else {
+      state.clients = remoteClients;
+      state.services = remoteServices;
+    }
+
+    if (!state.clients.some((client) => client.id === state.selectedId)) {
+      state.selectedId = state.clients[0]?.id ?? null;
+    }
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ clients: state.clients, services: state.services }));
+    } catch (error) { /* sin acceso a localStorage */ }
+
+    render();
+
+    if (mustMerge || remoteIsEmpty) {
+      await pushRemote(); // sube lo mezclado para que la base quede al día
+    } else {
+      setSyncState('ok');
+    }
+  } catch (error) {
+    console.warn('No se pudo leer la base de datos; se usan los datos de este dispositivo.', error);
   }
 }
 
@@ -666,3 +764,4 @@ state.clients = savedData.clients;
 state.services = savedData.services;
 state.selectedId = state.clients[0]?.id ?? null;
 render();
+loadRemote();
