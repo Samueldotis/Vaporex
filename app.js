@@ -89,7 +89,8 @@ function loadData() {
 }
 
 // ---- Sincronización con la base de datos (Neon, vía /api/data) ----
-const API_URL = '/api/data';
+const CLIENTES_URL = '/api/clientes';
+const SERVICIOS_URL = '/api/servicios';
 const SYNC_FLAG = 'trama-sync-state-v1'; // 'ok' = sincronizado, 'dirty' = cambios sin subir
 let remotePushTimer = null;
 
@@ -125,14 +126,27 @@ function sanitizeRemoteServices(list) {
     }));
 }
 
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+}
+
+async function getJson(url) {
+  const response = await fetch(url, { cache: 'no-store' });
+  if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+  return response.json();
+}
+
 async function pushRemote() {
   try {
-    const response = await fetch(API_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ clients: state.clients, services: state.services }),
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    await Promise.all([
+      postJson(CLIENTES_URL, state.clients),
+      postJson(SERVICIOS_URL, state.services),
+    ]);
     setSyncState('ok');
   } catch (error) {
     console.warn('No se pudo sincronizar con la base de datos.', error);
@@ -155,12 +169,10 @@ function saveData() {
 
 async function loadRemote() {
   try {
-    const response = await fetch(API_URL, { cache: 'no-store' });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const remote = await response.json();
+    const [rawClients, rawServices] = await Promise.all([getJson(CLIENTES_URL), getJson(SERVICIOS_URL)]);
 
-    const remoteClients = sanitizeRemoteClients(Array.isArray(remote.clients) ? remote.clients : []);
-    const remoteServices = sanitizeRemoteServices(Array.isArray(remote.services) ? remote.services : []);
+    const remoteClients = sanitizeRemoteClients(Array.isArray(rawClients) ? rawClients : []);
+    const remoteServices = sanitizeRemoteServices(Array.isArray(rawServices) ? rawServices : []);
 
     // Si hay cambios locales sin subir (o es la primera vez), se mezclan con lo de la base.
     // Si ya estaba sincronizado, manda la base de datos.
