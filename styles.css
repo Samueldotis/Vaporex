@@ -59,6 +59,75 @@ svg {
 
 .app-shell { min-height: 100vh; }
 
+.login-screen {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  display: grid;
+  width: min(100%, 390px);
+  gap: 14px;
+  padding: 34px;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow);
+}
+
+.login-logo {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 4px;
+  border-radius: 14px;
+  box-shadow: var(--shadow-soft);
+}
+
+.login-card .eyebrow { margin: 0; }
+
+.login-card h1 {
+  margin: -8px 0 4px;
+  font-family: Georgia, serif;
+  font-size: 27px;
+  font-weight: 600;
+}
+
+.login-prompt {
+  margin: -10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.login-field {
+  display: grid;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.login-field input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--text);
+}
+
+.login-field input[aria-invalid="true"] { border-color: #dc2626; }
+
+.login-error {
+  margin: -5px 0 0;
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.login-submit { width: 100%; }
+
 .sidebar {
   position: fixed;
   inset: 0 auto 0 0;
@@ -162,24 +231,20 @@ svg {
 
 .sidebar-bottom { margin-top: auto; }
 
-.local-note {
+.password-change-button {
   display: flex;
+  width: 100%;
   align-items: center;
+  justify-content: flex-start;
   gap: 8px;
-  margin: 0 10px 18px;
-  color: var(--muted);
+  margin-bottom: 18px;
+  padding: 0 10px;
   font-size: 11px;
-  line-height: 1.5;
 }
 
-.local-dot {
-  width: 8px;
-  height: 8px;
-  flex: 0 0 auto;
-  border-radius: 50%;
-  background: var(--primary);
-  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.15);
-}
+.password-change-button svg { width: 15px; height: 15px; }
+.password-form-grid { grid-template-columns: 1fr; }
+.password-error { margin: 14px 0 0; color: #b91c1c; font-size: 12px; }
 
 .profile-chip {
   display: flex;

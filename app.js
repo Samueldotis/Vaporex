@@ -1,4 +1,7 @@
 const STORAGE_KEY = 'trama-clientes-v1';
+const AUTH_SESSION_KEY = 'trama-authenticated-v1';
+const PASSWORD_STORAGE_KEY = 'trama-page-password-v1';
+const PAGE_PASSWORD = '123456';
 const EXAMPLE_CLIENT_IDS = new Set(['c-lucia', 'c-marcos', 'c-amina', 'c-diego', 'c-sofia']);
 const SERVICE_OPTIONS = ['Limpieza profunda', 'Bote de agua', 'Reparación tarjeta electrónica', 'Instalación de aires'];
 const ZONE_OPTIONS = ['Sin zona', 'Norte', 'Centro', 'Sur', 'Este', 'Oeste'];
@@ -11,6 +14,13 @@ const clientForm = $('#client-form');
 const serviceDialog = $('#service-dialog');
 const serviceForm = $('#service-form');
 const toast = $('#toast');
+const loginScreen = $('#login-screen');
+const loginForm = $('#login-form');
+const loginError = $('#login-error');
+const appShell = $('#app-shell');
+const passwordDialog = $('#password-dialog');
+const passwordForm = $('#password-form');
+const passwordError = $('#password-error');
 
 const state = {
   clients: [],
@@ -771,9 +781,120 @@ document.addEventListener('keydown', (event) => {
   }
 });
 
-const savedData = loadData();
-state.clients = savedData.clients;
-state.services = savedData.services;
-state.selectedId = state.clients[0]?.id ?? null;
-render();
-loadRemote();
+function openApp() {
+  loginScreen.hidden = true;
+  appShell.hidden = false;
+
+  const savedData = loadData();
+  state.clients = savedData.clients;
+  state.services = savedData.services;
+  state.selectedId = state.clients[0]?.id ?? null;
+  render();
+  loadRemote();
+}
+
+function hasActiveSession() {
+  try {
+    return sessionStorage.getItem(AUTH_SESSION_KEY) === 'true';
+  } catch (error) {
+    console.warn('No se pudo recuperar la sesión de acceso.', error);
+    return false;
+  }
+}
+
+function getPagePassword() {
+  return localStorage.getItem(PASSWORD_STORAGE_KEY) || PAGE_PASSWORD;
+}
+
+$('#change-password-button').addEventListener('click', () => {
+  passwordForm.reset();
+  passwordError.hidden = true;
+  passwordDialog.showModal();
+  passwordForm.elements.currentPassword.focus();
+});
+
+document.querySelectorAll('[data-close-password-dialog]').forEach((button) => {
+  button.addEventListener('click', () => passwordDialog.close());
+});
+passwordDialog.addEventListener('click', (event) => {
+  if (event.target === passwordDialog) passwordDialog.close();
+});
+
+passwordForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const formData = new FormData(passwordForm);
+  const currentPassword = String(formData.get('currentPassword') ?? '');
+  const newPassword = String(formData.get('newPassword') ?? '');
+  const confirmPassword = String(formData.get('confirmPassword') ?? '');
+
+  passwordError.hidden = true;
+  if (newPassword !== confirmPassword) {
+    passwordError.textContent = 'La confirmación no coincide con la nueva contraseña.';
+    passwordError.hidden = false;
+    passwordForm.elements.confirmPassword.focus();
+    return;
+  }
+
+  let savedPassword;
+  try {
+    savedPassword = getPagePassword();
+  } catch (error) {
+    console.warn('No se pudo leer la contraseña guardada.', error);
+    passwordError.textContent = 'No se pudo comprobar la contraseña actual en este dispositivo.';
+    passwordError.hidden = false;
+    return;
+  }
+
+  if (currentPassword !== savedPassword) {
+    passwordError.textContent = 'La contraseña actual no es correcta.';
+    passwordError.hidden = false;
+    passwordForm.elements.currentPassword.focus();
+    return;
+  }
+
+  try {
+    localStorage.setItem(PASSWORD_STORAGE_KEY, newPassword);
+  } catch (error) {
+    console.warn('No se pudo guardar la nueva contraseña.', error);
+    passwordError.textContent = 'No se pudo guardar la nueva contraseña en este dispositivo.';
+    passwordError.hidden = false;
+    return;
+  }
+
+  passwordDialog.close();
+  showToast('Contraseña actualizada.');
+});
+
+loginForm.addEventListener('submit', (event) => {
+  event.preventDefault();
+  const password = String(new FormData(loginForm).get('password') ?? '');
+
+  let savedPassword;
+  try {
+    savedPassword = getPagePassword();
+  } catch (error) {
+    console.warn('No se pudo leer la contraseña guardada.', error);
+    loginError.textContent = 'No se pudo comprobar la contraseña en este dispositivo.';
+    loginError.hidden = false;
+    return;
+  }
+
+  if (password !== savedPassword) {
+    loginError.textContent = 'La contraseña no es correcta.';
+    loginError.hidden = false;
+    loginForm.elements.password.setAttribute('aria-invalid', 'true');
+    loginForm.elements.password.select();
+    return;
+  }
+
+  loginError.hidden = true;
+  loginForm.elements.password.removeAttribute('aria-invalid');
+  try {
+    sessionStorage.setItem(AUTH_SESSION_KEY, 'true');
+  } catch (error) {
+    console.warn('No se pudo guardar la sesión de acceso; se solicitará la contraseña al recargar.', error);
+  }
+  openApp();
+});
+
+if (hasActiveSession()) openApp();
