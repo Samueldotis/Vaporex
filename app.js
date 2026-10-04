@@ -333,7 +333,10 @@ function renderClientServices(client) {
       </div>
       <div class="service-card-actions">
         <a class="calendar-link" href="${escapeHTML(getGoogleCalendarUrl(client, service))}" target="_blank" rel="noopener noreferrer">Google Calendar</a>
-        <button class="text-action danger" type="button" data-action="delete-service" data-service-id="${escapeHTML(service.id)}">Eliminar</button>
+        <div class="service-card-actions-inline">
+          <button class="text-action" type="button" data-action="edit-service" data-service-id="${escapeHTML(service.id)}">Editar</button>
+          <button class="text-action danger" type="button" data-action="delete-service" data-service-id="${escapeHTML(service.id)}">Eliminar</button>
+        </div>
       </div>
     </div>`;
   }).join('') : '<div class="empty-section">Aún no hay servicios registrados para este cliente.</div>';
@@ -346,6 +349,31 @@ function renderClientServices(client) {
       </div>
       <div class="service-date-list">${rows}</div>
     </section>`;
+}
+
+function openServiceDialog(service = null) {
+  serviceForm.reset();
+  serviceForm.dataset.serviceId = service?.id ?? '';
+  serviceForm.elements.date.value = service?.date ?? dateOffset(0);
+  serviceForm.elements.time.value = service?.time ?? '09:00';
+  serviceForm.elements.serviceType.value = service?.type ?? SERVICE_OPTIONS[0];
+  serviceForm.elements.quantity.value = service?.quantity ?? '';
+
+  const dialogTitle = $('#service-dialog-title');
+  const submitButton = serviceForm.querySelector('[type="submit"]');
+  dialogTitle.textContent = service ? 'Editar servicio' : 'Registrar servicio';
+  submitButton.textContent = service ? 'Guardar cambios' : 'Registrar servicio';
+
+  serviceDialog.showModal();
+  serviceForm.elements.date.focus();
+}
+
+function closeServiceDialog() {
+  serviceDialog.close();
+  delete serviceForm.dataset.serviceId;
+  const submitButton = serviceForm.querySelector('[type="submit"]');
+  if (submitButton) submitButton.textContent = 'Registrar servicio';
+  $('#service-dialog-title').textContent = 'Registrar servicio';
 }
 
 function renderClientRows() {
@@ -587,9 +615,9 @@ dialog.addEventListener('click', (event) => {
   if (event.target === dialog) closeClientDialog();
 });
 
-document.querySelectorAll('[data-close-service-dialog]').forEach((button) => button.addEventListener('click', () => serviceDialog.close()));
+document.querySelectorAll('[data-close-service-dialog]').forEach((button) => button.addEventListener('click', closeServiceDialog));
 serviceDialog.addEventListener('click', (event) => {
-  if (event.target === serviceDialog) serviceDialog.close();
+  if (event.target === serviceDialog) closeServiceDialog();
 });
 
 serviceForm.addEventListener('submit', (event) => {
@@ -602,21 +630,32 @@ serviceForm.addEventListener('submit', (event) => {
   const time = String(formData.get('time'));
   const serviceType = String(formData.get('serviceType'));
   const quantity = Number(formData.get('quantity')) || 0;
+  const editingId = serviceForm.dataset.serviceId || '';
 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !time || !serviceType) return;
 
-  state.services.push({
-    id: makeId(),
+  const payload = {
     clientId: client.id,
     date,
     time,
     type: serviceType,
     quantity: Math.max(0, Math.floor(quantity)),
-  });
+  };
+
+  if (editingId) {
+    state.services = state.services.map((service) => (service.id === editingId ? { ...service, ...payload } : service));
+    showToast('Servicio actualizado.');
+  } else {
+    state.services.push({
+      id: makeId(),
+      ...payload,
+    });
+    showToast('Servicio registrado.');
+  }
+
   saveData();
-  serviceDialog.close();
+  closeServiceDialog();
   render();
-  showToast('Servicio registrado.');
 });
 
 clientForm.addEventListener('submit', (event) => {
@@ -680,6 +719,14 @@ detailPanel.addEventListener('click', (event) => {
     return;
   }
 
+  if (action === 'edit-service') {
+    const serviceId = control.dataset.serviceId;
+    const service = state.services.find((item) => item.id === serviceId);
+    if (!service) return;
+    openServiceDialog(service);
+    return;
+  }
+
   if (action === 'delete-service') {
     const serviceId = control.dataset.serviceId;
     state.services = state.services.filter((service) => service.id !== serviceId);
@@ -690,13 +737,7 @@ detailPanel.addEventListener('click', (event) => {
   }
 
   if (action === 'register-service') {
-    serviceForm.reset();
-    serviceForm.elements.date.value = dateOffset(0);
-    serviceForm.elements.time.value = '09:00';
-    serviceForm.elements.serviceType.value = SERVICE_OPTIONS[0];
-    serviceForm.elements.quantity.value = '';
-    serviceDialog.showModal();
-    serviceForm.elements.date.focus();
+    openServiceDialog();
     return;
   }
 
