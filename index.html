@@ -11,25 +11,7 @@
     <script src="app.js" defer></script>
   </head>
   <body>
-    <main class="login-screen" id="login-screen">
-      <form class="login-card" id="login-form">
-        <img class="login-logo" src="logo.webp" alt="Vaporex" />
-        <p class="eyebrow">ESPACIO PRIVADO</p>
-        <h1>
-          <span>Bienvenida</span>
-          <span class="login-name">Ingrid Solorzano</span>
-        </h1>
-        <p class="login-prompt">Ingrese su contraseña</p>
-        <label class="login-field">
-          <span>Contraseña</span>
-          <input id="page-password" name="password" type="password" autocomplete="current-password" required autofocus />
-        </label>
-        <p class="login-error" id="login-error" role="alert" hidden>La contraseña no es correcta.</p>
-        <button class="button button-primary login-submit" type="submit">Ingresar</button>
-      </form>
-    </main>
-
-    <div class="app-shell" id="app-shell" hidden>
+    <div class="app-shell" id="app-shell">
       <aside class="sidebar" aria-label="Navegación principal">
         <a class="brand" href="#clientes" aria-label="Vaporex, inicio">
           <img class="brand-mark" src="logo.webp" alt="Vaporex" />
@@ -50,10 +32,6 @@
         </nav>
 
         <div class="sidebar-bottom">
-          <button class="button button-quiet password-change-button" id="change-password-button" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4" /><path d="m11 12 9-9m-4 4 3 3m-6-1 3 3" /></svg>
-            <span>Cambiar contraseña</span>
-          </button>
           <div class="profile-chip">
             <span class="profile-avatar">T</span>
             <span>
@@ -243,8 +221,10 @@
             <select name="serviceType" required>
               <option value="Limpieza profunda">Limpieza profunda</option>
               <option value="Bote de agua">Bote de agua</option>
-              <option value="Reparación tarjeta electrónica">Reparación tarjeta electrónica</option>
-              <option value="Instalación de aires">Instalación de aires</option>
+              <option value="Instalación de equipos HVAC">Instalación de equipos HVAC</option>
+              <option value="Desinstalación de equipos HVAC">Desinstalación de equipos HVAC</option>
+              <option value="Reparación de tarjeta electrónica">Reparación de tarjeta electrónica</option>
+              <option value="Otros">Otros</option>
             </select>
           </label>
           <label class="field field-full" id="service-quantity-field">
@@ -255,39 +235,6 @@
         <div class="dialog-actions">
           <button class="button button-quiet" type="button" data-close-service-dialog>Cancelar</button>
           <button class="button button-primary" type="submit">Registrar servicio</button>
-        </div>
-      </form>
-    </dialog>
-
-    <dialog class="client-dialog" id="password-dialog" aria-labelledby="password-dialog-title">
-      <form id="password-form">
-        <div class="dialog-header">
-          <div>
-            <p class="eyebrow">SEGURIDAD</p>
-            <h2 id="password-dialog-title">Cambiar contraseña</h2>
-          </div>
-          <button class="icon-button" type="button" data-close-password-dialog aria-label="Cerrar">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m18 6-12 12M6 6l12 12" /></svg>
-          </button>
-        </div>
-        <div class="form-grid password-form-grid">
-          <label class="field field-full">
-            <span>Contraseña actual <b>*</b></span>
-            <input name="currentPassword" type="password" autocomplete="current-password" required />
-          </label>
-          <label class="field field-full">
-            <span>Nueva contraseña <b>*</b></span>
-            <input name="newPassword" type="password" autocomplete="new-password" minlength="6" required />
-          </label>
-          <label class="field field-full">
-            <span>Confirmar nueva contraseña <b>*</b></span>
-            <input name="confirmPassword" type="password" autocomplete="new-password" minlength="6" required />
-          </label>
-        </div>
-        <p class="password-error" id="password-error" role="alert" hidden></p>
-        <div class="dialog-actions">
-          <button class="button button-quiet" type="button" data-close-password-dialog>Cancelar</button>
-          <button class="button button-primary" type="submit">Guardar contraseña</button>
         </div>
       </form>
     </dialog>

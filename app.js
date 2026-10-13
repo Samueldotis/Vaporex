@@ -1,9 +1,7 @@
 const STORAGE_KEY = 'trama-clientes-v1';
-const AUTH_SESSION_KEY = 'trama-authenticated-v1';
-const PASSWORD_STORAGE_KEY = 'trama-page-password-v1';
-const PAGE_PASSWORD = '123456';
 const EXAMPLE_CLIENT_IDS = new Set(['c-lucia', 'c-marcos', 'c-amina', 'c-diego', 'c-sofia']);
-const SERVICE_OPTIONS = ['Limpieza profunda', 'Bote de agua', 'Reparación tarjeta electrónica', 'Instalación de aires'];
+const SERVICE_OPTIONS = ['Limpieza profunda', 'Bote de agua', 'Instalación de equipos HVAC', 'Desinstalación de equipos HVAC', 'Reparación de tarjeta electrónica', 'Otros'];
+const TECHNICAL_SERVICE_TYPES = new Set(['Instalación de equipos HVAC', 'Desinstalación de equipos HVAC', 'Reparación de tarjeta electrónica', 'Otros']);
 const ZONE_OPTIONS = ['Sin zona', 'Norte', 'Centro', 'Sur', 'Este', 'Oeste'];
 
 const $ = (selector) => document.querySelector(selector);
@@ -14,13 +12,7 @@ const clientForm = $('#client-form');
 const serviceDialog = $('#service-dialog');
 const serviceForm = $('#service-form');
 const toast = $('#toast');
-const loginScreen = $('#login-screen');
-const loginForm = $('#login-form');
-const loginError = $('#login-error');
 const appShell = $('#app-shell');
-const passwordDialog = $('#password-dialog');
-const passwordForm = $('#password-form');
-const passwordError = $('#password-error');
 
 const state = {
   clients: [],
@@ -316,7 +308,7 @@ function renderClientServices(client) {
       return firstKey.localeCompare(secondKey);
     });
 
-  const rows = services.length ? services.map((service) => {
+  const renderServiceCard = (service) => {
     const quantityValue = Number(service.quantity) || 0;
     const quantityLabel = quantityValue > 0
       ? `<span class="service-quantity">${quantityValue} ${quantityValue === 1 ? 'aire' : 'aires'}</span>`
@@ -339,7 +331,13 @@ function renderClientServices(client) {
         </div>
       </div>
     </div>`;
-  }).join('') : '<div class="empty-section">Aún no hay servicios registrados para este cliente.</div>';
+  };
+
+  const nonTechnicalServices = services.filter((service) => !TECHNICAL_SERVICE_TYPES.has(service.type));
+  const technicalServices = services.filter((service) => TECHNICAL_SERVICE_TYPES.has(service.type));
+
+  const generalRows = nonTechnicalServices.length ? nonTechnicalServices.map(renderServiceCard).join('') : '<div class="empty-section">Aún no hay servicios registrados para este cliente.</div>';
+  const technicalRows = technicalServices.length ? technicalServices.map(renderServiceCard).join('') : '<div class="empty-section">Aún no hay servicios técnicos registrados para este cliente.</div>';
 
   return `
     <section class="detail-section">
@@ -347,7 +345,13 @@ function renderClientServices(client) {
         <h3>Servicios agendados <span class="section-count">${services.length}</span></h3>
         <button class="text-action" type="button" data-action="register-service">+ Añadir</button>
       </div>
-      <div class="service-date-list">${rows}</div>
+      <div class="service-date-list">${generalRows}</div>
+    </section>
+    <section class="detail-section">
+      <div class="section-heading">
+        <h3>Servicios Técnicos <span class="section-count">${technicalServices.length}</span></h3>
+      </div>
+      <div class="service-date-list">${technicalRows}</div>
     </section>`;
 }
 
@@ -823,7 +827,6 @@ document.addEventListener('keydown', (event) => {
 });
 
 function openApp() {
-  loginScreen.hidden = true;
   appShell.hidden = false;
 
   const savedData = loadData();
@@ -834,108 +837,4 @@ function openApp() {
   loadRemote();
 }
 
-function hasActiveSession() {
-  try {
-    return sessionStorage.getItem(AUTH_SESSION_KEY) === 'true';
-  } catch (error) {
-    console.warn('No se pudo recuperar la sesión de acceso.', error);
-    return false;
-  }
-}
-
-function getPagePassword() {
-  return localStorage.getItem(PASSWORD_STORAGE_KEY) || PAGE_PASSWORD;
-}
-
-$('#change-password-button').addEventListener('click', () => {
-  passwordForm.reset();
-  passwordError.hidden = true;
-  passwordDialog.showModal();
-  passwordForm.elements.currentPassword.focus();
-});
-
-document.querySelectorAll('[data-close-password-dialog]').forEach((button) => {
-  button.addEventListener('click', () => passwordDialog.close());
-});
-passwordDialog.addEventListener('click', (event) => {
-  if (event.target === passwordDialog) passwordDialog.close();
-});
-
-passwordForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const formData = new FormData(passwordForm);
-  const currentPassword = String(formData.get('currentPassword') ?? '');
-  const newPassword = String(formData.get('newPassword') ?? '');
-  const confirmPassword = String(formData.get('confirmPassword') ?? '');
-
-  passwordError.hidden = true;
-  if (newPassword !== confirmPassword) {
-    passwordError.textContent = 'La confirmación no coincide con la nueva contraseña.';
-    passwordError.hidden = false;
-    passwordForm.elements.confirmPassword.focus();
-    return;
-  }
-
-  let savedPassword;
-  try {
-    savedPassword = getPagePassword();
-  } catch (error) {
-    console.warn('No se pudo leer la contraseña guardada.', error);
-    passwordError.textContent = 'No se pudo comprobar la contraseña actual en este dispositivo.';
-    passwordError.hidden = false;
-    return;
-  }
-
-  if (currentPassword !== savedPassword) {
-    passwordError.textContent = 'La contraseña actual no es correcta.';
-    passwordError.hidden = false;
-    passwordForm.elements.currentPassword.focus();
-    return;
-  }
-
-  try {
-    localStorage.setItem(PASSWORD_STORAGE_KEY, newPassword);
-  } catch (error) {
-    console.warn('No se pudo guardar la nueva contraseña.', error);
-    passwordError.textContent = 'No se pudo guardar la nueva contraseña en este dispositivo.';
-    passwordError.hidden = false;
-    return;
-  }
-
-  passwordDialog.close();
-  showToast('Contraseña actualizada.');
-});
-
-loginForm.addEventListener('submit', (event) => {
-  event.preventDefault();
-  const password = String(new FormData(loginForm).get('password') ?? '');
-
-  let savedPassword;
-  try {
-    savedPassword = getPagePassword();
-  } catch (error) {
-    console.warn('No se pudo leer la contraseña guardada.', error);
-    loginError.textContent = 'No se pudo comprobar la contraseña en este dispositivo.';
-    loginError.hidden = false;
-    return;
-  }
-
-  if (password !== savedPassword) {
-    loginError.textContent = 'La contraseña no es correcta.';
-    loginError.hidden = false;
-    loginForm.elements.password.setAttribute('aria-invalid', 'true');
-    loginForm.elements.password.select();
-    return;
-  }
-
-  loginError.hidden = true;
-  loginForm.elements.password.removeAttribute('aria-invalid');
-  try {
-    sessionStorage.setItem(AUTH_SESSION_KEY, 'true');
-  } catch (error) {
-    console.warn('No se pudo guardar la sesión de acceso; se solicitará la contraseña al recargar.', error);
-  }
-  openApp();
-});
-
-if (hasActiveSession()) openApp();
+openApp();
