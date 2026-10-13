@@ -23,6 +23,9 @@
 
 html {
   background: linear-gradient(180deg, var(--bg) 0%, #f8fbff 100%);
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  scroll-padding-bottom: 92px;
 }
 
 body {
@@ -32,6 +35,9 @@ body {
   background: linear-gradient(180deg, var(--bg) 0%, #f8fbff 100%);
   color: var(--text);
   font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  touch-action: manipulation;
 }
 
 button, input, select, textarea { font: inherit; }
@@ -738,8 +744,14 @@ h1 {
 .detail-identity {
   display: flex;
   min-width: 0;
+  flex: 1 1 auto;
   align-items: center;
   gap: 13px;
+}
+
+.detail-identity > div {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .detail-avatar {
@@ -750,10 +762,12 @@ h1 {
 }
 
 .detail-name {
+  max-width: min(100%, 18ch);
   overflow-wrap: anywhere;
+  word-break: break-word;
   margin: 0 0 5px;
   font-family: Georgia, serif;
-  font-size: 24px;
+  font-size: clamp(20px, 2vw, 24px);
   font-weight: 600;
   line-height: 1.15;
 }
@@ -1449,9 +1463,18 @@ h1 {
   .calendar-day-events { display: none; }
   .calendar-mobile-events { display: grid; gap: 8px; margin-top: 12px; }
   .calendar-empty { margin: 12px 0 1px; padding: 11px; border-radius: 10px; background: var(--panel-soft); line-height: 1.45; }
-  .detail-topline { align-items: center; }
-  .detail-identity { gap: 10px; }
-  .detail-panel .detail-name { font-size: 22px; }
+  .detail-topline {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .detail-identity { gap: 10px; width: 100%; }
+  .detail-panel .detail-name { max-width: min(100%, 16ch); font-size: clamp(20px, 5vw, 24px); }
+  .detail-menu {
+    width: 100%;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
   .detail-panel .detail-company,
   .detail-panel .detail-footer { font-size: 12px; }
   .detail-panel .section-heading .section-count { min-width: 23px; height: 23px; font-size: 13px; }
@@ -1491,12 +1514,23 @@ h1 {
   .calendar-controls .icon-button { width: 35px; height: 35px; }
   .calendar-controls .button { min-height: 35px; padding: 0 9px; }
   .contact-list { grid-template-columns: 1fr; }
-  .detail-menu { gap: 2px; }
+  .detail-menu { gap: 2px; justify-content: flex-start; }
+  .detail-menu .button {
+    width: 100%;
+    justify-content: center;
+  }
+  .detail-panel .detail-name {
+    max-width: min(100%, 13ch);
+    font-size: clamp(18px, 6vw, 21px);
+    line-height: 1.2;
+  }
   .dialog-actions { justify-content: stretch; }
   .dialog-actions .button { flex: 1; padding: 0 8px; }
   .calendar-filter { width: 100%; order: 3; }
   .calendar-filter label { flex: 1; min-width: 0; }
   .calendar-filter input { width: 100%; min-width: 0; }
+  .list-toolbar { grid-template-columns: 1fr; }
+  .filter-field { width: 100%; }
 }
 
 @media (max-width: 340px) {
@@ -1505,6 +1539,28 @@ h1 {
   .crumb-slash { display: none; }
   .nav-link { min-width: 0; flex: 1; }
   .page-content { padding-right: 9px; padding-left: 9px; }
+}
+
+@media (pointer: coarse) {
+  .nav-link,
+  .button,
+  .icon-button,
+  .client-row,
+  .search-box,
+  .filter-field select,
+  .field input,
+  .field select,
+  .dialog-actions .button {
+    min-height: 46px;
+  }
+
+  .button,
+  .icon-button,
+  .nav-link,
+  .client-row,
+  .text-action {
+    -webkit-tap-highlight-color: rgba(37, 99, 235, 0.12);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
