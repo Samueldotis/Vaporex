@@ -2,6 +2,8 @@ const STORAGE_KEY = 'trama-clientes-v1';
 const EXAMPLE_CLIENT_IDS = new Set(['c-lucia', 'c-marcos', 'c-amina', 'c-diego', 'c-sofia']);
 const SERVICE_OPTIONS = ['Limpieza profunda', 'Bote de agua', 'Instalación de equipos HVAC', 'Desinstalación de equipos HVAC', 'Reparación de tarjeta electrónica', 'Otros'];
 const TECHNICAL_SERVICE_TYPES = new Set(['Instalación de equipos HVAC', 'Desinstalación de equipos HVAC', 'Reparación de tarjeta electrónica', 'Otros']);
+const SCHEDULED_SERVICE_OPTIONS = SERVICE_OPTIONS.filter((type) => !TECHNICAL_SERVICE_TYPES.has(type));
+const TECHNICAL_SERVICE_OPTIONS = SERVICE_OPTIONS.filter((type) => TECHNICAL_SERVICE_TYPES.has(type));
 const ZONE_OPTIONS = ['Sin zona', 'Norte', 'Centro', 'Sur', 'Este', 'Oeste'];
 
 const $ = (selector) => document.querySelector(selector);
@@ -340,16 +342,16 @@ function exportClientPdf(client) {
         <style>
           @page { size: A4; margin: 10mm; }
           * { box-sizing: border-box; }
-          body { margin: 0; color: #20252a; background: #fff; font: 12px Arial, sans-serif; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          h1 { margin: 0 0 6px; font-size: 17px; }
-          h2 { margin: 12px 0 5px; font-size: 11px; color: #53616b; text-transform: uppercase; letter-spacing: .06em; }
+          body { margin: 0; color: #20252a; background: #fff; font: 8px Arial, sans-serif; line-height: 1.25; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          h1 { margin: 0 0 6px; font-size: 12px; }
+          h2 { margin: 12px 0 5px; font-size: 9px; color: #53616b; text-transform: uppercase; letter-spacing: .06em; }
           .service-list { display: grid; gap: 6px; }
           .service-card { display: grid; grid-template-columns: 16px 1fr; gap: 12px; max-width: 115mm; padding: 10px 12px; border-radius: 2mm; background: #f3f8fb; break-inside: avoid; }
           .service-marker { width: 14px; height: 14px; margin-top: 3px; border-radius: 4px; background: #52986c; }
-          .service-content { display: grid; justify-items: start; gap: 1px; min-width: 0; font-size: 14px; }
-          .service-content strong { font-size: 15px; font-weight: 600; }
+          .service-content { display: grid; justify-items: start; gap: 1px; min-width: 0; font-size: 9px; }
+          .service-content strong { font-size: 10px; font-weight: 600; }
           .service-content span { overflow-wrap: anywhere; }
-          .service-content time { margin-top: 5px; font-size: 11px; }
+          .service-content time { margin-top: 5px; font-size: 8px; }
           dl { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; margin: 0; }
           .data-row { display: grid; grid-template-columns: 100px 1fr; gap: 5px; padding: 3px 0; border-bottom: 1px solid #dce5ea; }
           dt { color: #64727b; font-weight: 700; }
@@ -358,7 +360,7 @@ function exportClientPdf(client) {
           .note p { margin: 0 0 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
           .note time, .empty, footer { color: #64727b; }
           .empty { margin: 4px 0; }
-          footer { margin-top: 10px; font-size: 9px; }
+          footer { margin-top: 10px; font-size: 7px; }
         </style>
       </head>
       <body>
@@ -456,7 +458,7 @@ function renderClientServices(client) {
   return `
     <section class="detail-section">
       <div class="section-heading">
-        <h3>Servicios agendados <span class="section-count">${services.length}</span></h3>
+        <h3>Servicios de Higienización <span class="section-count">${services.length}</span></h3>
         <button class="text-action" type="button" data-action="register-service">+ Añadir</button>
       </div>
       <div class="service-date-list">${generalRows}</div>
@@ -464,23 +466,29 @@ function renderClientServices(client) {
     <section class="detail-section">
       <div class="section-heading">
         <h3>Servicios Técnicos <span class="section-count">${technicalServices.length}</span></h3>
+        <button class="text-action" type="button" data-action="register-technical-service">+ Añadir</button>
       </div>
       <div class="service-date-list">${technicalRows}</div>
     </section>`;
 }
 
-function openServiceDialog(service = null) {
+function openServiceDialog(service = null, category = 'scheduled') {
   serviceForm.reset();
   serviceForm.dataset.serviceId = service?.id ?? '';
   serviceForm.elements.date.value = service?.date ?? dateOffset(0);
   serviceForm.elements.time.value = service?.time ?? '09:00';
-  serviceForm.elements.serviceType.value = service?.type ?? SERVICE_OPTIONS[0];
+  const serviceOptions = category === 'technical' ? TECHNICAL_SERVICE_OPTIONS : SCHEDULED_SERVICE_OPTIONS;
+  serviceForm.elements.serviceType.innerHTML = serviceOptions
+    .map((type) => `<option value="${escapeHTML(type)}">${escapeHTML(type)}</option>`)
+    .join('');
+  serviceForm.elements.serviceType.value = service?.type ?? serviceOptions[0];
   serviceForm.elements.quantity.value = service?.quantity ?? '';
 
   const dialogTitle = $('#service-dialog-title');
   const submitButton = serviceForm.querySelector('[type="submit"]');
-  dialogTitle.textContent = service ? 'Editar servicio' : 'Registrar servicio';
-  submitButton.textContent = service ? 'Guardar cambios' : 'Registrar servicio';
+  const serviceLabel = category === 'technical' ? 'servicio técnico' : 'servicio';
+  dialogTitle.textContent = service ? 'Editar servicio' : `Registrar ${serviceLabel}`;
+  submitButton.textContent = service ? 'Guardar cambios' : `Registrar ${serviceLabel}`;
 
   serviceDialog.showModal();
   serviceForm.elements.date.focus();
@@ -497,7 +505,7 @@ function closeServiceDialog() {
 function renderClientRows() {
   const listResultCount = $('#list-result-count');
   const listHeading = $('#list-heading');
-  const filterKey = state.serviceFilter === 'today' ? 'SERVICIOS DE HOY' : state.serviceFilter === 'scheduled' ? 'SERVICIOS AGENDADOS' : 'CLIENTES';
+  const filterKey = state.serviceFilter === 'today' ? 'SERVICIOS DE HOY' : state.serviceFilter === 'scheduled' ? 'SERVICIOS DE HIGIENIZACIÓN' : 'CLIENTES';
 
   listHeading.textContent = filterKey;
   const list = visibleClients();
@@ -583,7 +591,7 @@ function renderAgenda() {
   const emptyMessage = $('#calendar-empty');
   emptyMessage.textContent = monthServices.length
     ? ''
-    : 'No hay servicios agendados para este mes.';
+    : 'No hay servicios de higienización agendados para este mes.';
   emptyMessage.hidden = monthServices.length > 0;
 }
 
@@ -850,7 +858,7 @@ detailPanel.addEventListener('click', (event) => {
     const serviceId = control.dataset.serviceId;
     const service = state.services.find((item) => item.id === serviceId);
     if (!service) return;
-    openServiceDialog(service);
+    openServiceDialog(service, TECHNICAL_SERVICE_TYPES.has(service.type) ? 'technical' : 'scheduled');
     return;
   }
 
@@ -865,6 +873,11 @@ detailPanel.addEventListener('click', (event) => {
 
   if (action === 'register-service') {
     openServiceDialog();
+    return;
+  }
+
+  if (action === 'register-technical-service') {
+    openServiceDialog(null, 'technical');
     return;
   }
 
