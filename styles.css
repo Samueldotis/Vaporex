@@ -764,7 +764,14 @@ h1 {
   font-size: 13px;
 }
 
-.detail-menu { display: flex; gap: 4px; }
+.detail-menu { display: flex; align-items: center; gap: 4px; }
+
+.detail-menu .button {
+  min-height: 34px;
+  padding: 0 10px;
+  border-radius: 10px;
+  font-size: 11px;
+}
 
 .icon-button {
   display: grid;

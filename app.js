@@ -299,6 +299,120 @@ function getGoogleCalendarUrl(client, service) {
   return url.toString();
 }
 
+function exportClientPdf(client) {
+  const services = state.services
+    .filter((service) => service.clientId === client.id)
+    .sort((first, second) => `${first.date}T${first.time || '00:00'}`.localeCompare(`${second.date}T${second.time || '00:00'}`));
+  const notes = [...client.notes].sort((first, second) => second.createdAt.localeCompare(first.createdAt));
+  const valueRow = (label, value) => `<div class="data-row"><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(value || 'Sin datos')}</dd></div>`;
+  const notesContent = notes.length
+    ? notes.map((note) => `<article class="note"><p>${escapeHTML(note.text)}</p><time>${escapeHTML(formatDate(note.createdAt, { day: 'numeric', month: 'long', year: 'numeric' }))}</time></article>`).join('')
+    : '<p class="empty">No hay notas registradas.</p>';
+  const servicesContent = services.length
+    ? services.map((service) => {
+      const date = new Date(`${service.date}T12:00:00`);
+      const start = new Date(`${service.date}T${service.time || '09:00'}:00`);
+      const end = new Date(start.getTime() + 60 * 60 * 1000);
+      const dateLabel = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'short' }).format(date);
+      const timeLabel = `${formatTime(service.time)} – ${formatTime(`${String(end.getHours()).padStart(2, '0')}:${String(end.getMinutes()).padStart(2, '0')}`)}`;
+      const quantity = Number(service.quantity) > 0
+        ? `${Number(service.quantity)} ${Number(service.quantity) === 1 ? 'aire acondicionado' : 'aires acondicionados'}`
+        : '';
+
+      return `<article class="service-card">
+        <span class="service-marker" aria-hidden="true"></span>
+        <div class="service-content">
+          <strong>${escapeHTML(client.name)}</strong>
+          <span>${escapeHTML(service.type || 'Servicio')}</span>
+          ${quantity ? `<span>${escapeHTML(quantity)}</span>` : ''}
+          <span>${escapeHTML(client.company || 'Sin dirección')}</span>
+          <time>${escapeHTML(dateLabel.charAt(0).toLocaleUpperCase('es-ES') + dateLabel.slice(1))} · ${escapeHTML(timeLabel)}</time>
+        </div>
+      </article>`;
+    }).join('')
+    : '<p class="empty">No hay servicios registrados.</p>';
+  const exportedAt = new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+  const documentHtml = `<!doctype html>
+    <html lang="es">
+      <head>
+        <meta charset="UTF-8">
+        <title>Vaporex - ${escapeHTML(client.name)}</title>
+        <style>
+          @page { size: A4; margin: 10mm; }
+          * { box-sizing: border-box; }
+          body { margin: 0; color: #20252a; background: #fff; font: 12px Arial, sans-serif; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          h1 { margin: 0 0 6px; font-size: 17px; }
+          h2 { margin: 12px 0 5px; font-size: 11px; color: #53616b; text-transform: uppercase; letter-spacing: .06em; }
+          .service-list { display: grid; gap: 6px; }
+          .service-card { display: grid; grid-template-columns: 16px 1fr; gap: 12px; max-width: 115mm; padding: 10px 12px; border-radius: 2mm; background: #f3f8fb; break-inside: avoid; }
+          .service-marker { width: 14px; height: 14px; margin-top: 3px; border-radius: 4px; background: #52986c; }
+          .service-content { display: grid; justify-items: start; gap: 1px; min-width: 0; font-size: 14px; }
+          .service-content strong { font-size: 15px; font-weight: 600; }
+          .service-content span { overflow-wrap: anywhere; }
+          .service-content time { margin-top: 5px; font-size: 11px; }
+          dl { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; margin: 0; }
+          .data-row { display: grid; grid-template-columns: 100px 1fr; gap: 5px; padding: 3px 0; border-bottom: 1px solid #dce5ea; }
+          dt { color: #64727b; font-weight: 700; }
+          dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
+          .note { padding: 4px 0; border-bottom: 1px solid #dce5ea; break-inside: avoid; }
+          .note p { margin: 0 0 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
+          .note time, .empty, footer { color: #64727b; }
+          .empty { margin: 4px 0; }
+          footer { margin-top: 10px; font-size: 9px; }
+        </style>
+      </head>
+      <body>
+        <section>
+          <h1>Servicios de ${escapeHTML(client.name)}</h1>
+          <h2>Servicios (${services.length})</h2>
+          <div class="service-list">${servicesContent}</div>
+        </section>
+        <section>
+          <h2>Información del cliente</h2>
+          <dl>
+            ${valueRow('Dirección / ubicación', client.company)}
+            ${valueRow('Zona', client.zone || 'Sin zona')}
+            ${valueRow('Correo electrónico', client.email)}
+            ${valueRow('Teléfono', client.phone)}
+            ${valueRow('URL de ubicación', client.locationUrl)}
+            ${valueRow('Cliente desde', formatDate(client.createdAt, { day: 'numeric', month: 'long', year: 'numeric' }))}
+          </dl>
+        </section>
+        <section>
+          <h2>Notas (${notes.length})</h2>
+          ${notesContent}
+        </section>
+        <footer>Documento generado el ${escapeHTML(exportedAt)} por Vaporex.</footer>
+      </body>
+    </html>`;
+
+  const printWindow = window.open('', '_blank');
+  if (!printWindow) {
+    showToast('El navegador bloqueó la ventana de exportación. Permite las ventanas emergentes e inténtalo de nuevo.');
+    return;
+  }
+
+  try {
+    printWindow.document.open();
+    printWindow.document.write(documentHtml);
+    printWindow.document.close();
+    window.setTimeout(() => {
+      if (printWindow.closed) return;
+      try {
+        printWindow.focus();
+        printWindow.print();
+      } catch (error) {
+        console.error('No se pudo abrir la impresión de la ficha.', error);
+        showToast('No se pudo abrir la impresión del PDF.');
+      }
+    }, 250);
+  } catch (error) {
+    printWindow.close();
+    console.error('No se pudo preparar la ficha para exportar.', error);
+    showToast('No se pudo preparar la ficha para exportar.');
+  }
+}
+
 function renderClientServices(client) {
   const services = state.services
     .filter((service) => service.clientId === client.id)
@@ -504,6 +618,10 @@ function renderDetail() {
         </div>
       </div>
       <div class="detail-menu">
+        <button class="button button-quiet" type="button" data-action="export-client-pdf">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v15H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Z"/><path d="M14 2v6h6M8 15h8m-8 3h5"/></svg>
+          <span>Exportar PDF</span>
+        </button>
         <button class="icon-button" type="button" data-action="edit-client" aria-label="Editar cliente" title="Editar cliente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 4 4 4M4 20l4-.8L19.4 7.8a2.1 2.1 0 0 0-3-3L5 16.2 4 20Z"/></svg></button>
         <button class="icon-button" type="button" data-action="delete-client" aria-label="Eliminar cliente" title="Eliminar cliente"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6"/></svg></button>
       </div>
@@ -704,6 +822,11 @@ detailPanel.addEventListener('click', (event) => {
   if (!client) return;
 
   const action = control.dataset.action;
+
+  if (action === 'export-client-pdf') {
+    exportClientPdf(client);
+    return;
+  }
 
   if (action === 'edit-client') {
     openClientDialog(client);
