@@ -5,6 +5,8 @@ const TECHNICAL_SERVICE_TYPES = new Set(['Instalación de equipos HVAC', 'Desins
 const SCHEDULED_SERVICE_OPTIONS = SERVICE_OPTIONS.filter((type) => !TECHNICAL_SERVICE_TYPES.has(type));
 const TECHNICAL_SERVICE_OPTIONS = SERVICE_OPTIONS.filter((type) => TECHNICAL_SERVICE_TYPES.has(type));
 const ZONE_OPTIONS = ['Sin zona', 'Norte', 'Centro', 'Sur', 'Este', 'Oeste'];
+const PDF_DATABASE_NAME = 'vaporex-attachments-v1';
+const PDF_STORE_NAME = 'pdfs';
 
 const $ = (selector) => document.querySelector(selector);
 const clientList = $('#client-list');
@@ -27,6 +29,66 @@ const state = {
   zoneFilter: 'all',
   toastTimer: null,
 };
+
+let pdfDatabasePromise;
+
+function openPdfDatabase() {
+  if (!globalThis.indexedDB) return Promise.reject(new Error('Este navegador no permite guardar archivos PDF.'));
+  if (!pdfDatabasePromise) {
+    pdfDatabasePromise = new Promise((resolve, reject) => {
+      const request = indexedDB.open(PDF_DATABASE_NAME, 1);
+      request.onupgradeneeded = () => request.result.createObjectStore(PDF_STORE_NAME, { keyPath: 'id' });
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('No se pudo abrir el almacenamiento de PDF.'));
+    });
+  }
+  return pdfDatabasePromise;
+}
+
+async function storePdf(id, file) {
+  const database = await openPdfDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(PDF_STORE_NAME, 'readwrite');
+    transaction.objectStore(PDF_STORE_NAME).put({ id, fileName: file.name, blob: file });
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error || new Error('No se pudo guardar el archivo PDF.'));
+    transaction.onabort = () => reject(transaction.error || new Error('Se canceló el guardado del archivo PDF.'));
+  });
+}
+
+async function getStoredPdf(id) {
+  const database = await openPdfDatabase();
+  return new Promise((resolve, reject) => {
+    const request = database.transaction(PDF_STORE_NAME, 'readonly').objectStore(PDF_STORE_NAME).get(id);
+    request.onsuccess = () => resolve(request.result?.blob ?? null);
+    request.onerror = () => reject(request.error || new Error('No se pudo abrir el archivo PDF.'));
+  });
+}
+
+async function deleteStoredPdf(id) {
+  const database = await openPdfDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(PDF_STORE_NAME, 'readwrite');
+    transaction.objectStore(PDF_STORE_NAME).delete(id);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error || new Error('No se pudo eliminar el archivo PDF.'));
+    transaction.onabort = () => reject(transaction.error || new Error('Se canceló la eliminación del archivo PDF.'));
+  });
+}
+
+async function deleteClientPdfs(client) {
+  const pdfNotes = client.notes.filter((note) => note.type === 'pdf');
+  if (!pdfNotes.length) return;
+  const database = await openPdfDatabase();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(PDF_STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(PDF_STORE_NAME);
+    pdfNotes.forEach((note) => store.delete(note.id));
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error || new Error('No se pudieron eliminar los archivos PDF.'));
+    transaction.onabort = () => reject(transaction.error || new Error('Se canceló la eliminación de los archivos PDF.'));
+  });
+}
 
 function dateOffset(days) {
   const date = new Date();
@@ -308,7 +370,7 @@ function exportClientPdf(client) {
   const notes = [...client.notes].sort((first, second) => second.createdAt.localeCompare(first.createdAt));
   const valueRow = (label, value) => `<div class="data-row"><dt>${escapeHTML(label)}</dt><dd>${escapeHTML(value || 'Sin datos')}</dd></div>`;
   const notesContent = notes.length
-    ? notes.map((note) => `<article class="note"><p>${escapeHTML(note.text)}</p><time>${escapeHTML(formatDate(note.createdAt, { day: 'numeric', month: 'long', year: 'numeric' }))}</time></article>`).join('')
+    ? notes.map((note) => `<article class="note"><p>${note.type === 'pdf' ? `Archivo PDF adjunto: ${escapeHTML(note.fileName)}` : escapeHTML(note.text)}</p><time>${escapeHTML(formatDate(note.createdAt, { day: 'numeric', month: 'long', year: 'numeric' }))}</time></article>`).join('')
     : '<p class="empty">No hay notas registradas.</p>';
   const servicesContent = services.length
     ? services.map((service) => {
@@ -431,7 +493,7 @@ function exportClientsCsv() {
     ['Nombre completo', 'Dirección / ubicación', 'URL de ubicación', 'Zona', 'Correo electrónico', 'Teléfono', 'Fecha de registro', 'Notas', 'Servicios registrados'],
     ...state.clients.map((client) => {
       const notes = client.notes
-        .map((note) => `${note.createdAt ? `${note.createdAt}: ` : ''}${note.text ?? ''}`)
+        .map((note) => `${note.createdAt ? `${note.createdAt}: ` : ''}${note.type === 'pdf' ? `PDF adjunto: ${note.fileName}` : note.text ?? ''}`)
         .join('\n');
       const services = state.services
         .filter((service) => service.clientId === client.id)
@@ -699,9 +761,13 @@ function renderDetail() {
     <section class="detail-section">
       <div class="section-heading">
         <h3>Notas <span class="section-count">${notes.length}</span></h3>
-        <button class="text-action" type="button" data-action="show-note-form">+ Añadir</button>
+        <div class="notes-actions">
+          <button class="text-action" type="button" data-action="show-note-form">+ Añadir</button>
+          <button class="text-action" type="button" data-action="show-pdf-picker">Adjuntar PDF</button>
+          <input id="pdf-file-input" type="file" accept="application/pdf,.pdf" multiple hidden aria-label="Seleccionar archivos PDF" />
+        </div>
       </div>
-      <div class="note-list">${notes.length ? notes.map((note) => `<article class="note-item"><p class="note-text">${escapeHTML(note.text)}</p><span class="note-date">${escapeHTML(formatDate(note.createdAt, { day: 'numeric', month: 'short', year: 'numeric' }))}</span></article>`).join('') : '<div class="empty-section">Aún no hay notas para este cliente.</div>'}</div>
+      <div class="note-list">${notes.length ? notes.map((note) => `<article class="note-item"><p class="note-text">${escapeHTML(note.type === 'pdf' ? note.fileName : note.text)}</p>${note.type === 'pdf' ? `<div class="note-actions"><button class="text-action" type="button" data-action="open-note-pdf" data-note-id="${escapeHTML(note.id)}">Abrir PDF</button><button class="text-action danger" type="button" data-action="delete-note-pdf" data-note-id="${escapeHTML(note.id)}">Quitar</button></div>` : ''}<span class="note-date">${escapeHTML(formatDate(note.createdAt, { day: 'numeric', month: 'short', year: 'numeric' }))}</span></article>`).join('') : '<div class="empty-section">Aún no hay notas para este cliente.</div>'}</div>
       <form class="inline-form inline-form-note" id="note-form" hidden>
         <textarea name="text" required maxlength="600" placeholder="Escribe una nota breve…" aria-label="Nueva nota"></textarea>
         <button class="button button-primary" type="submit">Guardar nota</button>
@@ -877,7 +943,7 @@ clientForm.addEventListener('submit', (event) => {
   render();
 });
 
-detailPanel.addEventListener('click', (event) => {
+detailPanel.addEventListener('click', async (event) => {
   const control = event.target.closest('[data-action]');
   if (!control) return;
 
@@ -899,6 +965,13 @@ detailPanel.addEventListener('click', (event) => {
   if (action === 'delete-client') {
     const confirmText = `¿Eliminar la ficha de ${client.name}? También se borrarán sus notas y datos asociados.`;
     if (window.confirm(confirmText)) {
+      try {
+        await deleteClientPdfs(client);
+      } catch (error) {
+        console.error('No se pudieron eliminar los archivos PDF del cliente.', error);
+        showToast('No se pudo eliminar la ficha porque no se pudieron quitar sus archivos PDF.');
+        return;
+      }
       state.clients = state.clients.filter((item) => item.id !== client.id);
       state.services = state.services.filter((service) => service.clientId !== client.id);
       state.selectedId = state.clients[0]?.id ?? null;
@@ -940,6 +1013,92 @@ detailPanel.addEventListener('click', (event) => {
     const form = detailPanel.querySelector('#note-form');
     form.hidden = !form.hidden;
     if (!form.hidden) form.querySelector('input, textarea').focus();
+    return;
+  }
+
+  if (action === 'show-pdf-picker') {
+    detailPanel.querySelector('#pdf-file-input').click();
+    return;
+  }
+
+  if (action === 'open-note-pdf') {
+    const note = client.notes.find((item) => item.id === control.dataset.noteId && item.type === 'pdf');
+    if (!note) return;
+    const previewWindow = window.open('about:blank', '_blank');
+    if (!previewWindow) {
+      showToast('El navegador bloqueó la ventana. Permite las ventanas emergentes e inténtalo de nuevo.');
+      return;
+    }
+    getStoredPdf(note.id).then((file) => {
+      if (!file) {
+        previewWindow.close();
+        showToast('El archivo PDF no está disponible en este dispositivo.');
+        return;
+      }
+      const url = URL.createObjectURL(file);
+      previewWindow.location.replace(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    }).catch((error) => {
+      previewWindow.close();
+      console.error('No se pudo abrir el archivo PDF adjunto.', error);
+      showToast('No se pudo abrir el archivo PDF.');
+    });
+    return;
+  }
+
+  if (action === 'delete-note-pdf') {
+    const note = client.notes.find((item) => item.id === control.dataset.noteId && item.type === 'pdf');
+    if (!note || !window.confirm(`¿Quitar el archivo ${note.fileName} de las notas?`)) return;
+    try {
+      await deleteStoredPdf(note.id);
+      client.notes = client.notes.filter((item) => item.id !== note.id);
+      saveData();
+      render();
+      showToast('Archivo PDF quitado de las notas.');
+    } catch (error) {
+      console.error('No se pudo quitar el archivo PDF adjunto.', error);
+      showToast('No se pudo quitar el archivo PDF.');
+    }
+  }
+});
+
+detailPanel.addEventListener('change', async (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || input.id !== 'pdf-file-input') return;
+
+  const client = getSelectedClient();
+  const files = [...input.files];
+  input.value = '';
+  if (!client || !files.length) return;
+
+  let added = 0;
+  let failed = 0;
+  for (const file of files) {
+    if (!file.name.toLowerCase().endsWith('.pdf') && file.type !== 'application/pdf') {
+      failed += 1;
+      continue;
+    }
+    try {
+      if (await file.slice(0, 5).text() !== '%PDF-') {
+        failed += 1;
+        continue;
+      }
+      const id = makeId();
+      await storePdf(id, file);
+      client.notes.push({ id, type: 'pdf', fileName: file.name, createdAt: dateOffset(0) });
+      added += 1;
+    } catch (error) {
+      failed += 1;
+      console.error(`No se pudo adjuntar el archivo PDF ${file.name}.`, error);
+    }
+  }
+
+  if (added) {
+    saveData();
+    render();
+    showToast(`${added} ${added === 1 ? 'PDF adjuntado' : 'PDF adjuntados'}${failed ? `; ${failed} no se pudieron adjuntar` : ''}.`);
+  } else if (failed) {
+    showToast('No se pudo adjuntar ningún archivo. Selecciona archivos PDF válidos e inténtalo de nuevo.');
   }
 });
 

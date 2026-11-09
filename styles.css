@@ -889,6 +889,16 @@ h1 {
 
 .note-list { display: grid; gap: 7px; }
 
+.notes-actions,
+.note-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.note-actions { margin-top: 4px; }
+
 .inline-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 120px;
