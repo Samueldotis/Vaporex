@@ -415,6 +415,59 @@ function exportClientPdf(client) {
   }
 }
 
+function csvCell(value) {
+  const text = String(value ?? '');
+  const safeText = /^[\t\r ]*[=+\-@]/.test(text) ? `'${text}` : text;
+  return `"${safeText.replace(/"/g, '""')}"`;
+}
+
+function exportClientsCsv() {
+  if (!state.clients.length) {
+    showToast('No hay clientes registrados para exportar.');
+    return;
+  }
+
+  const rows = [
+    ['Nombre completo', 'Dirección / ubicación', 'URL de ubicación', 'Zona', 'Correo electrónico', 'Teléfono', 'Fecha de registro', 'Notas', 'Servicios registrados'],
+    ...state.clients.map((client) => {
+      const notes = client.notes
+        .map((note) => `${note.createdAt ? `${note.createdAt}: ` : ''}${note.text ?? ''}`)
+        .join('\n');
+      const services = state.services
+        .filter((service) => service.clientId === client.id)
+        .map((service) => {
+          const quantity = Number(service.quantity);
+          const quantityLabel = quantity > 0
+            ? ` (${quantity} ${quantity === 1 ? 'aire acondicionado' : 'aires acondicionados'})`
+            : '';
+          return `${service.date} ${service.time || ''} - ${service.type || 'Servicio'}${quantityLabel}`.trim();
+        })
+        .join('\n');
+
+      return [
+        client.name,
+        client.company,
+        client.locationUrl,
+        client.zone,
+        client.email,
+        client.phone,
+        client.createdAt,
+        notes,
+        services,
+      ];
+    }),
+  ];
+  const csv = `\uFEFF${rows.map((row) => row.map(csvCell).join(',')).join('\r\n')}`;
+  const file = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const downloadUrl = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = downloadUrl;
+  link.download = `vaporex-clientes-${dateOffset(0)}.csv`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+  showToast(`Se exportaron ${state.clients.length} ${state.clients.length === 1 ? 'cliente' : 'clientes'}.`);
+}
+
 function renderClientServices(client) {
   const services = state.services
     .filter((service) => service.clientId === client.id)
@@ -666,6 +719,7 @@ function updatePageText() {
   $('#page-crumb').textContent = isAgenda ? 'Agenda' : 'Clientes';
   $('#page-title').textContent = isAgenda ? 'Agenda' : 'Clientes';
   $('#page-eyebrow').textContent = isAgenda ? 'SERVICIOS' : 'RELACIONES';
+  $('#export-clients-button').hidden = isAgenda;
   $('#agenda-panel').hidden = !isAgenda;
   $('#clients-workspace').hidden = isAgenda;
   $('#client-stats').hidden = isAgenda;
@@ -713,6 +767,7 @@ function closeClientDialog() {
 
 $('#today-label').textContent = new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' }).format(new Date());
 $('#add-client-button').addEventListener('click', () => openClientDialog());
+$('#export-clients-button').addEventListener('click', exportClientsCsv);
 document.querySelector('.primary-nav').addEventListener('click', (event) => {
   const button = event.target.closest('[data-view]');
   if (!button) return;
