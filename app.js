@@ -767,7 +767,7 @@ function renderDetail() {
           <input id="pdf-file-input" type="file" accept="application/pdf,.pdf" multiple hidden aria-label="Seleccionar archivos PDF" />
         </div>
       </div>
-      <div class="note-list">${notes.length ? notes.map((note) => `<article class="note-item"><p class="note-text">${escapeHTML(note.type === 'pdf' ? note.fileName : note.text)}</p>${note.type === 'pdf' ? `<div class="note-actions"><button class="text-action" type="button" data-action="open-note-pdf" data-note-id="${escapeHTML(note.id)}">Abrir PDF</button><button class="text-action danger" type="button" data-action="delete-note-pdf" data-note-id="${escapeHTML(note.id)}">Quitar</button></div>` : ''}<span class="note-date">${escapeHTML(formatDate(note.createdAt, { day: 'numeric', month: 'short', year: 'numeric' }))}</span></article>`).join('') : '<div class="empty-section">Aún no hay notas para este cliente.</div>'}</div>
+      <div class="note-list">${notes.length ? notes.map((note) => `<article class="note-item"><p class="note-text">${escapeHTML(note.type === 'pdf' ? note.fileName : note.text)}</p>${note.type === 'pdf' ? `<div class="note-actions"><button class="text-action" type="button" data-action="open-note-pdf" data-note-id="${escapeHTML(note.id)}">Abrir PDF</button><button class="text-action danger" type="button" data-action="delete-note-pdf" data-note-id="${escapeHTML(note.id)}">Quitar</button></div>` : `<div class="note-actions"><button class="text-action" type="button" data-action="edit-note" data-note-id="${escapeHTML(note.id)}">Editar</button></div>`}<span class="note-date">${escapeHTML(formatDate(note.createdAt, { day: 'numeric', month: 'short', year: 'numeric' }))}</span></article>`).join('') : '<div class="empty-section">Aún no hay notas para este cliente.</div>'}</div>
       <form class="inline-form inline-form-note" id="note-form" hidden>
         <textarea name="text" required maxlength="600" placeholder="Escribe una nota breve…" aria-label="Nueva nota"></textarea>
         <button class="button button-primary" type="submit">Guardar nota</button>
@@ -1016,6 +1016,20 @@ detailPanel.addEventListener('click', async (event) => {
     return;
   }
 
+  if (action === 'edit-note') {
+    const note = client.notes.find((item) => item.id === control.dataset.noteId && item.type !== 'pdf');
+    const noteItem = control.closest('.note-item');
+    if (!note || !noteItem) return;
+    noteItem.innerHTML = `<form class="note-edit-form" id="note-edit-form" data-note-id="${escapeHTML(note.id)}"><textarea name="text" required maxlength="600" aria-label="Editar nota">${escapeHTML(note.text)}</textarea><div class="note-actions"><button class="button button-primary" type="submit">Guardar cambios</button><button class="button button-quiet" type="button" data-action="cancel-note-edit">Cancelar</button></div></form>`;
+    noteItem.querySelector('textarea').focus();
+    return;
+  }
+
+  if (action === 'cancel-note-edit') {
+    renderDetail();
+    return;
+  }
+
   if (action === 'show-pdf-picker') {
     detailPanel.querySelector('#pdf-file-input').click();
     return;
@@ -1117,6 +1131,12 @@ detailPanel.addEventListener('submit', (event) => {
     if (!text) return;
     client.notes.push({ id: makeId(), text, createdAt: dateOffset(0) });
     showToast('Nota guardada.');
+  } else if (form.id === 'note-edit-form') {
+    const note = client.notes.find((item) => item.id === form.dataset.noteId && item.type !== 'pdf');
+    const text = String(formData.get('text')).trim();
+    if (!note || !text) return;
+    note.text = text;
+    showToast('Nota actualizada.');
   } else {
     return;
   }

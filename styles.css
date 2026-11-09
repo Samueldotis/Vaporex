@@ -899,6 +899,23 @@ h1 {
 
 .note-actions { margin-top: 4px; }
 
+.note-edit-form { display: grid; gap: 8px; }
+
+.note-edit-form textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #ffffff;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.note-edit-form .button { min-height: 34px; padding: 0 10px; font-size: 12px; }
+
 .inline-form {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 120px;
